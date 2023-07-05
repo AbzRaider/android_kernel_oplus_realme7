@@ -9,13 +9,13 @@ ccache -M 100G
 export ARCH=arm64
 export KBUILD_BUILD_HOST=MARK•DEVS
 export KBUILD_BUILD_USER="AbzRaider"
-git clone --depth=1  https://gitlab.com/LeCmnGend/proton-clang.git -b clang-16  clang
- if ! [ -d "out" ]; then
+git clone --depth=1 https://github.com/rama982/clang  clang
+if ! [ -d "out" ]; then
 echo "Kernel OUT Directory Not Found . Making Again"
 mkdir out
 fi
 
-make O=out ARCH=arm64 nashc_defconfig
+make O=out ARCH=arm64 lineage-nashc_defconfig
 
 PATH="${PWD}/clang/bin:${PATH}" \
  make -j "$(nproc --all)" O="out" CC="clang" \
