@@ -69,11 +69,11 @@ EXPORT_SYMBOL(ged_kpi_PushAppSelfFcFp_fbt);
 
 #define GED_KPI_MSEC_DIVIDER 1000000
 #define GED_KPI_SEC_DIVIDER 1000000000
-#define GED_KPI_MAX_FPS 60
+#define GED_KPI_MAX_FPS 90
 /* set default margin to be distinct from FPSGO(0 or 3) */
-#define GED_KPI_DEFAULT_FPS_MARGIN 4
-#define GED_KPI_CPU_MAX_OPP 0
-#define GED_KPI_FPS_LIMIT 120
+#define GED_KPI_DEFAULT_FPS_MARGIN 3
+#define GED_KPI_CPU_MAX_OPP 4
+#define GED_KPI_FPS_LIMIT 90
 
 #define GED_TIMESTAMP_TYPE_D    0x1
 #define GED_TIMESTAMP_TYPE_1    0x2
@@ -255,7 +255,7 @@ static int g_target_fps_default = GED_KPI_MAX_FPS;
 
 /* static int display_fps = GED_KPI_MAX_FPS; */
 static int is_game_control_frame_rate;
-static int target_fps_4_main_head = 60;
+static int target_fps_4_main_head = 90;
 static long long vsync_period = GED_KPI_SEC_DIVIDER / GED_KPI_MAX_FPS;
 static GED_LOG_BUF_HANDLE ghLogBuf_KPI;
 static struct workqueue_struct *g_psWorkQueue;
