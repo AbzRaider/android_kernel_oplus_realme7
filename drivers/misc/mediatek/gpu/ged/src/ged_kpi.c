@@ -255,7 +255,7 @@ static int g_target_fps_default = GED_KPI_MAX_FPS;
 
 /* static int display_fps = GED_KPI_MAX_FPS; */
 static int is_game_control_frame_rate;
-static int target_fps_4_main_head = 90;
+static int target_fps_4_main_head = 65;
 static long long vsync_period = GED_KPI_SEC_DIVIDER / GED_KPI_MAX_FPS;
 static GED_LOG_BUF_HANDLE ghLogBuf_KPI;
 static struct workqueue_struct *g_psWorkQueue;
