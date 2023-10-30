@@ -98,7 +98,7 @@ static LCM_UTIL_FUNCS lcm_util;
 #include <linux/io.h>
 #include <linux/platform_device.h>
 #include <linux/gpio.h>
-#include <soc/oppo/device_info.h>
+#include <soc/oplus/device_info.h>
 #endif
 
 #define MTK_GPIO_DESC_BASE 301
