@@ -1502,5 +1502,5 @@
 
 
 #include "mediatek/cust_mt6785_camera_20682.dtsi"
-#include <oplus6785_19661/cust.dtsi>
+#include "mediatek/oplus6785/19661/cust.dtsi"
 /*End of this file, DO NOT ADD ANYTHING HERE*/
