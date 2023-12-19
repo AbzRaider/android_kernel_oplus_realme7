@@ -47,6 +47,20 @@ struct LCM_DRIVER *lcm_driver_list[] = {
 #if defined(NT36525B_HLT_EVEN_BOE_HDP_DSI_VDO_LCM)
     &nt36525b_hlt_even_boe_hdp_dsi_vdo_lcm_drv,
 #endif
+
+#if defined(VIRTUAL_DSI_VDO_DEFAULT)
+	&virtual_dsi_vdo_default,
+ #endif
+
+#ifdef OPLUS_BUG_STABILITY
+#if defined(NT36672C_FHDP_DSI_VDO_TIANMA_ZAL1878)
+		&nt36672c_fhdp_dsi_vdo_tianma_zal1878_lcm_drv,
+#endif //NT36672C_FHDP_DSI_VDO_TIANMA_ZAL1878
+
+#if defined(NT36672C_FHDP_DSI_VDO_JDI_ZAL1878)
+		&nt36672c_fhdp_dsi_vdo_jdi_zal1878_lcm_drv,
+#endif //NT36672C_FHDP_DSI_VDO_JDI_ZAL1878
+
 #if defined(NT36672C_FHDP_DSI_VDO_TIANMA_ZAL1852)
 	&nt36672c_fhdp_dsi_vdo_tianma_zal1852_lcm_drv,
 #endif //NT36672C_FHDP_DSI_VDO_TIANMA_ZAL1852
@@ -58,7 +72,7 @@ struct LCM_DRIVER *lcm_driver_list[] = {
 #if defined(NT36672C_FHDP_DSI_VDO_BOE_ZAL1852)
 	&nt36672c_fhdp_dsi_vdo_boe_zal1852_lcm_drv,
 #endif //NT36672C_FHDP_DSI_VDO_BOE_ZAL1852
-
+#endif
 #if defined(ES6311_ANX6585_ZIGZAG_WXGA)
 	&es6311_anx6585_zigzag_wxga_lcm_drv,
 #endif
