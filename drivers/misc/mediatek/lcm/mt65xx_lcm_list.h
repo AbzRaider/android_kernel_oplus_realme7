@@ -17,6 +17,8 @@
 #include <lcm_drv.h>
 
 #ifdef OPLUS_BUG_STABILITY
+extern struct LCM_DRIVER nt36672c_fhdp_dsi_vdo_tianma_zal1878_lcm_drv; // Add for Nemo
+extern struct LCM_DRIVER nt36672c_fhdp_dsi_vdo_jdi_zal1878_lcm_drv; // Add for Nemo
 extern struct LCM_DRIVER nt36672c_fhdp_dsi_vdo_tianma_zal1852_lcm_drv; // Add for sala
 extern struct LCM_DRIVER nt36672c_fhdp_dsi_vdo_jdi_zal1852_lcm_drv; // Add for Sala
 extern struct LCM_DRIVER nt36672c_fhdp_dsi_vdo_boe_zal1852_lcm_drv; // Add for sala
