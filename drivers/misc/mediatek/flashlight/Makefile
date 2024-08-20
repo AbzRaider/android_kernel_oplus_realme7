@@ -16,8 +16,16 @@ obj-$(CONFIG_MTK_FLASHLIGHT_RT5081)      += flashlights-rt5081.o
 obj-$(CONFIG_MTK_FLASHLIGHT_MT6336)      += flashlights-mt6336.o
 obj-$(CONFIG_MTK_FLASHLIGHT_MT6370)      += flashlights-mt6370.o
 obj-$(CONFIG_MTK_FLASHLIGHT_MT6360)      += flashlights-mt6360.o
+#JinTong.You@Cam.Drv add flash bring up for Moss 20210909
+obj-$(CONFIG_MTK_FLASHLIGHT_EVEN)        += flashlights-even.o
+obj-$(CONFIG_MTK_FLASHLIGHT_MOSS)        += flashlights-moss.o
 obj-$(CONFIG_MTK_FLASHLIGHT_DUMMY)       += flashlights-dummy.o
 obj-$(CONFIG_MTK_FLASHLIGHT_DUMMY_GPIO)  += flashlights-dummy-gpio.o
+
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+#v-peng.song@Cam.Drv flashlights decouple
+obj-y += ./oplus/flashlight_custom.o
+#endif
 
 ccflags-$(CONFIG_MTK_FLASHLIGHT_DEBUG)     := -DDEBUG
 ccflags-$(CONFIG_MTK_FLASHLIGHT_LED191)    += -DCONFIG_MTK_FLASHLIGHT_LED191
