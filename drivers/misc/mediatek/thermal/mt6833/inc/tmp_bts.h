@@ -57,7 +57,6 @@
 #define BTSNRPA_RAP_ADC_CHANNEL		AUX_IN2_NTC
 
 
-
 extern int IMM_GetOneChannelValue(int dwChannel, int data[4], int *rawdata);
 extern int IMM_IsAdcInitReady(void);
 
