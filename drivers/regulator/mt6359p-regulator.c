@@ -372,6 +372,8 @@ static const u32 vfe28_voltages[] = {
 	2800000,
 };
 
+#ifndef OPLUS_FEATURE_CAMERA_COMMON
+/*zhengguozhong@Cam.Drv, 20211229, add for fix issue of VCN not support 1.1v which S5K3P9SP will use*/
 static const u32 vcn13_voltages[] = {
 	900000,
 	1000000,
@@ -379,6 +381,15 @@ static const u32 vcn13_voltages[] = {
 	1200000,
 	1300000,
 };
+#else /*OPLUS_FEATURE_CAMERA_COMMON*/
+static const u32 vcn13_voltages[] = {
+	900000,
+	1000000,
+	1100000,
+	1200000,
+	1300000,
+};
+#endif /*OPLUS_FEATURE_CAMERA_COMMON*/
 
 static const u32 vcn33_1_bt_voltages[] = {
 	0,
