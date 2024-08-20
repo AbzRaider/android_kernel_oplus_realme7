@@ -24,6 +24,35 @@
 
 /* ------------------------------------------------------------------------- */
 
+#ifdef OPLUS_BUG_STABILITY
+#define LM3697_EXPONENTIAL 1
+#define MP3188_EXPONENTIAL 1
+
+/*
+ * Guoqiang.jiang@MM.Display.LCD.Machine, 2018/03/13,
+ * add for backlight IC KTD3136
+ */
+#define KTD3136_EXPONENTIAL 1
+
+extern int is_lm3697;
+extern long lcd_bl_en_setting(unsigned int value);
+extern long lcd_enn_bias_setting(unsigned int value);
+extern long lcd_enp_bias_setting(unsigned int value);
+extern long lcd_rst_setting(unsigned int value);
+extern long lcd_1p8_en_setting(unsigned int value);
+extern long spi_csn_en_setting(unsigned int value);
+extern long lcd_vci_setting(unsigned int value);
+extern long lcd_vpoc_setting(unsigned int value);
+extern long lcd_mipi_err_setting(unsigned int value);
+extern long lcd_ldo_setting(unsigned int value);
+extern int __attribute__((weak)) tp_control_irq(bool enable, int mode) {return 0;};
+extern void __attribute__((weak)) tp_wait_hdl_finished(void) {return;};
+int __attribute__((weak)) register_device_proc(char *name, char *version, char *manufacture)
+{
+	printk("%s not defined, use weak func\n", __func__);
+	return 0;
+}
+#endif /* OPLUS_BUG_STABILITY */
 /* common enumerations */
 
 enum LCM_TYPE {
@@ -380,6 +409,7 @@ struct LCM_UFOE_CONFIG_PARAMS {
 };
 /* ------------------------------------------------------------------------- */
 
+#ifdef CONFIG_MTK_MT6382_BDG
 struct LCM_DSC_CONFIG_PARAMS {
 	unsigned int ver; /* [7:4] major [3:0] minor */
 	unsigned int slice_width;
@@ -391,8 +421,8 @@ struct LCM_DSC_CONFIG_PARAMS {
 	unsigned int bit_per_channel;
 	unsigned int rct_on;
 	unsigned int bp_enable;
-	unsigned int pic_height;/* need to check */
-	unsigned int pic_width;/* need to check */
+	unsigned int pic_height; /* need to check */
+	unsigned int pic_width;  /* need to check */
 	unsigned int slice_height;
 	unsigned int chunk_size;
 	unsigned int dec_delay;
@@ -414,6 +444,36 @@ struct LCM_DSC_CONFIG_PARAMS {
 	unsigned int rc_tgt_offset_hi;
 	unsigned int rc_tgt_offset_lo;
 };
+#else
+struct LCM_DSC_CONFIG_PARAMS {
+	unsigned int slice_width;
+	unsigned int slice_hight;
+	unsigned int bit_per_pixel;
+	unsigned int slice_mode;
+	unsigned int rgb_swap;
+	unsigned int dsc_cfg;
+	unsigned int dsc_line_buf_depth;
+	unsigned int bit_per_channel;
+	unsigned int rct_on;
+	unsigned int bp_enable;
+
+	unsigned int dec_delay;
+	unsigned int xmit_delay;
+	unsigned int scale_value;
+
+	unsigned int increment_interval;
+	unsigned int line_bpg_offset;
+	unsigned int decrement_interval;
+	unsigned int nfl_bpg_offset;
+	unsigned int slice_bpg_offset;
+	unsigned int initial_offset;
+	unsigned int final_offset;
+
+	unsigned int flatness_minqp;
+	unsigned int flatness_maxqp;
+	unsigned int rc_mode1_size;
+};
+#endif
 
 
 struct LCM_DBI_PARAMS {
@@ -553,7 +613,11 @@ enum DynFPS_LEVEL {
 	DFPS_LEVELNUM,
 };
 
+#ifdef OPLUS_FEATURE_DFPS3_SUPPORT
 #define DFPS_LEVELS 3
+#else
+#define DFPS_LEVELS 2
+#endif
 enum FPS_CHANGE_INDEX {
 	DYNFPS_NOT_DEFINED = 0,
 	DYNFPS_DSI_VFP = 1,
@@ -629,6 +693,10 @@ struct LCM_DSI_PARAMS {
 	unsigned int horizontal_blanking_pixel;
 	unsigned int horizontal_active_pixel;
 	unsigned int horizontal_bllp;
+#if 1//def ODM_WT_EDIT
+	unsigned int horizontal_sync_active_ext;
+	unsigned int horizontal_backporch_ext;
+#endif
 
 	unsigned int line_byte;
 	unsigned int horizontal_sync_active_byte;
@@ -746,6 +814,9 @@ struct LCM_DSI_PARAMS {
 
 	unsigned int PLL_CLOCK_dyn;	/* PLL_CLOCK = (int) PLL_CLOCK */
 	unsigned int data_rate_dyn;	/* data_rate = PLL_CLOCK x 2 */
+	#ifdef OPLUS_BUG_STABILITY
+	unsigned int dsi_hbp_dyn;
+	#endif /* OPLUS_BUG_STABILITY */
 
 	/*for ARR*/
 	unsigned int dynamic_fps_levels;
@@ -807,6 +878,13 @@ struct LCM_PARAMS {
 	unsigned int average_luminance;
 	unsigned int max_luminance;
 
+#if 1//def ODM_HQ_EDIT
+/* Liyan@ODM.HQ.Multimedia.LCM 2019/09/19 modified for backlight remapping */
+	int *blmap;
+	int blmap_size;
+	int brightness_max;
+	int brightness_min;
+#endif
 #ifdef CONFIG_MTK_HIGH_FRAME_RATE
 	enum LCM_Send_Cmd_Mode sendmode;
 #endif
@@ -945,6 +1023,10 @@ struct LCM_UTIL_FUNCS {
 	void (*send_data)(unsigned int data);
 	unsigned int (*read_data)(void);
 
+	//#ifdef OPLUS_FEATURE_RAMLESS_AOD
+	void (*dsi_set_cmdq_V4)(struct LCM_setting_table_V3 *para_list,
+			unsigned int size,  bool hs);
+	//#endif /* OPLUS_FEATURE_RAMLESS_AOD */
 	void (*dsi_set_cmdq_V3)(struct LCM_setting_table_V3 *para_list,
 			unsigned int size, unsigned char force_update);
 	void (*dsi_set_cmdq_V2)(unsigned int cmd, unsigned char count,
@@ -967,7 +1049,13 @@ struct LCM_UTIL_FUNCS {
 	int (*set_gpio_mode)(unsigned int pin, unsigned int mode);
 	int (*set_gpio_dir)(unsigned int pin, unsigned int dir);
 	int (*set_gpio_pull_enable)(unsigned int pin, unsigned char pull_en);
+#if 1//def ODM_WT_EDIT
 	long (*set_gpio_lcd_enp_bias)(unsigned int value);
+	void (*set_gpio_lcd_enn_bias)(unsigned int value);
+	void (*set_gpio_lcm_vddio_ctl)(unsigned int value);
+#else
+	long (*set_gpio_lcd_enp_bias)(unsigned int value);
+#endif
 	void (*dsi_set_cmdq_V11)(void *cmdq, unsigned int *pdata,
 			unsigned int queue_size, unsigned char force_update);
 	void (*dsi_set_cmdq_V22)(void *cmdq, unsigned int cmd,
@@ -1003,7 +1091,6 @@ struct LCM_DRIVER {
 	void (*init_power)(void);
 	void (*suspend_power)(void);
 	void (*resume_power)(void);
-
 	void (*update)(unsigned int x, unsigned int y, unsigned int width,
 			unsigned int height);
 	unsigned int (*compare_id)(void);
@@ -1017,10 +1104,37 @@ struct LCM_DRIVER {
 	bool (*get_hbm_wait)(void);
 	bool (*set_hbm_wait)(bool wait);
 	bool (*set_hbm_cmdq)(bool en, void *qhandle);
+#if 1//def ODM_WT_EDIT
+	void(*set_cabc_cmdq)(void *handle, unsigned int level);
+	void (*get_cabc_status)(int *status);
+#endif
 	void (*set_pwm)(unsigned int divider);
 	unsigned int (*get_pwm)(unsigned int divider);
 	void (*set_backlight_mode)(unsigned int mode);
 	/* ///////////////////////// */
+#if 1//def OPLUS_BUG_STABILITY
+	void (*set_cabc_mode_cmdq)(void *handle, unsigned int level);
+	/*
+	* add power seq api for ulps
+	*/
+	void (*poweron_before_ulps)(void);
+	void (*poweroff_after_ulps)(void);
+	/*
+	* add for samsung lcd hbm node
+	*/
+	void (*set_hbm_mode_cmdq)(void *handle, unsigned int level);
+	/*
+	* add for Aod feature
+	*/
+	void (*aod_doze_resume)(void);
+	/*
+	* modify for support aod state.
+	*/
+	void (*disp_lcm_aod_from_display_on)(void);
+	void (*set_aod_brightness)(void *handle, unsigned int mode);
+	void (*set_safe_mode)(void *handle, unsigned int mode);
+	bool (*set_hbm_wait_ramless)(bool wait, void *qhandle);
+#endif /* OPLUS_BUG_STABILITY */
 
 	int (*adjust_fps)(void *cmdq, int fps, struct LCM_PARAMS *params);
 	void (*validate_roi)(int *x, int *y, int *width, int *height);
@@ -1054,6 +1168,11 @@ struct LCM_DRIVER {
 		unsigned int from_level, unsigned int to_level, struct LCM_PARAMS *params);
 	bool (*dfps_need_send_cmd)(
 	unsigned int from_level, unsigned int to_level, struct LCM_PARAMS *params);
+	void (*shutdown_power)(void);
+	void (*set_aod_area_cmdq)(void *handle, unsigned char *area);
+	void (*set_aod_cv_mode)(void *qhandle,unsigned int mode);
+	void (*doze_enable)(void *handle);
+	void (*doze_disable)(void *handle);
 };
 
 /* LCM Driver Functions */
@@ -1070,5 +1189,14 @@ extern int display_bias_disable(void);
 extern int display_bias_regulator_init(void);
 
 
+#ifdef OPLUS_BUG_STABILITY
+/*
+* add for Aod feature
+*/
+extern unsigned int aod_mode;
+#endif /* OPLUS_BUG_STABILITY */
+#if 1
+extern int display_bias_setting(unsigned char voltage_value_offset);
+#endif
 
 #endif /* __LCM_DRV_H__ */
