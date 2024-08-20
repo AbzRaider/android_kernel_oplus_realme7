@@ -16,41 +16,39 @@
 #include "eeprom_i2c_custom_driver.h"
 #include "kd_imgsensor.h"
 
-#define IMX586_MAX_EEPROM_SIZE 0x24D0
-#define OV8856_MAX_EEPROM_SIZE 0x8000
-#define S5K4H7_MAX_EEPROM_SIZE 0x8000
 #define MAX_EEPROM_SIZE_16K 0x4000
 
 struct stCAM_CAL_LIST_STRUCT g_camCalList[] = {
-#ifdef OPLUS_FEATURE_CAMERA_COMMON
-	/*ChenMing@Cam.Drv add for 20730S otp BringUp 20211112*/
-	{OV64B_SENSOR_ID_20730, 0xA0, Common_read_region, MAX_EEPROM_SIZE_16K},
-	{IMX471_SENSOR_ID2_20730, 0xA8, Common_read_region},
-	{OV8856_SENSOR_ID2_20730, 0xA2, Common_read_region, MAX_EEPROM_SIZE_16K},
-	{GC02M1_SENSOR_ID_20730,0xA4,Common_read_region},
-	/*PangShengdong@Cam.Drv add for 20682 otp BringUP 20220224*/
-	{IMX682_SENSOR_ID, 0xA0, Common_read_region},
-	{S5KGM1SP_SENSOR_ID, 0xA0, Common_read_region, MAX_EEPROM_SIZE_16K},
-	{SALAA_QTECH_MAIN_S5KGM1SP_SENSOR_ID, 0xA0, Common_read_region, MAX_EEPROM_SIZE_16K},
-	{IMX471_SENSOR_ID1, 0xA8, Common_read_region},
-	{SALA_WIDE_OV8856_SENSOR_ID, 0xA2, Common_read_region, MAX_EEPROM_SIZE_16K},
-	{SALA_OV02B10_SENSOR_ID, 0xA4, Common_read_region},
-#else
+	{GC02M1HLT_SENSOR_ID_21690, 0xA4, Common_read_region},
+	{GC02M1SHINE_SENSOR_ID_21690, 0xA4, Common_read_region,MAX_EEPROM_SIZE_16K},
+	{S5KJN1_SENSOR_ID_21690, 0xA0, Common_read_region},
+	{HI1634Q_SENSOR_ID_21690, 0xA8, Common_read_region},
+	{S5K3P9SP_SENSOR_ID_21690, 0xA8, Common_read_region,MAX_EEPROM_SIZE_16K},
+	{OV48B_SENSOR_ID, 0xA0, Common_read_region, MAX_EEPROM_SIZE_16K},
+	{S5K3P9SP_SENSOR_ID, 0xA0, Common_read_region},
+	{OV13B10_SENSOR_ID, 0xA0, Common_read_region, MAX_EEPROM_SIZE_16K},
+	{IMX355_SENSOR_ID, 0xA8, Common_read_region},
+	{OV02B10_SENSOR_ID, 0xA4, Common_read_region},
 	/*Below is commom sensor */
+	{IMX586_SENSOR_ID, 0xA0, Common_read_region, MAX_EEPROM_SIZE_16K,
+		BL24SA64_write_region},
+	{IMX576_SENSOR_ID, 0xA2, Common_read_region},
 	{IMX519_SENSOR_ID, 0xA0, Common_read_region},
+	{IMX319_SENSOR_ID, 0xA2, Common_read_region, MAX_EEPROM_SIZE_16K},
+	{S5K3M5SX_SENSOR_ID, 0xA2, Common_read_region, MAX_EEPROM_SIZE_16K,
+		BL24SA64_write_region},
+	{IMX686_SENSOR_ID, 0xA0, Common_read_region, MAX_EEPROM_SIZE_16K},
+	{HI846_SENSOR_ID, 0xA0, Common_read_region, MAX_EEPROM_SIZE_16K},
+	{S5KGD1SP_SENSOR_ID, 0xA8, Common_read_region, MAX_EEPROM_SIZE_16K},
 	{S5K2T7SP_SENSOR_ID, 0xA4, Common_read_region},
-	{S5K2LQSX_SENSOR_ID, 0xA0, Common_read_region},
-	{S5KHM2SP_SENSOR_ID, 0xA0, Common_read_region},
 	{IMX386_SENSOR_ID, 0xA0, Common_read_region},
 	{S5K2L7_SENSOR_ID, 0xA0, Common_read_region},
 	{IMX398_SENSOR_ID, 0xA0, Common_read_region},
 	{IMX350_SENSOR_ID, 0xA0, Common_read_region},
 	{IMX386_MONO_SENSOR_ID, 0xA0, Common_read_region},
-	{IMX586_SENSOR_ID, 0xA0, Common_read_region, IMX586_MAX_EEPROM_SIZE},
 	{IMX499_SENSOR_ID, 0xA0, Common_read_region},
-	{OV8856_SENSOR_ID, 0x6C, Common_read_region, OV8856_MAX_EEPROM_SIZE},
-	{S5K4H7_SENSOR_ID, 0x20, Common_read_region, S5K4H7_MAX_EEPROM_SIZE},
-#endif
+	{IMX481_SENSOR_ID, 0xA4, Common_read_region, DEFAULT_MAX_EEPROM_SIZE_8K,
+		BL24SA64_write_region},
 	/*  ADD before this line */
 	{0, 0, 0}       /*end of list */
 };
