@@ -116,9 +116,10 @@ long ion_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 			return PTR_ERR(handle);
 		}
 
-		data.allocation.handle = handle->id;
-		cleanup_handle = handle;
 		pass_to_user(handle);
+		data.allocation.handle = handle->id;
+
+		cleanup_handle = handle;
 		break;
 	}
 	case ION_IOC_FREE:
@@ -193,12 +194,11 @@ long ion_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 			       data.fd.fd, ret);
 			return ret;
 		} else {
-			data.handle.handle = handle->id;
 			handle = pass_to_user(handle);
-			if (IS_ERR(handle)) {
+			if (IS_ERR(handle))
 				ret = PTR_ERR(handle);
-				data.handle.handle = 0;
-			}
+			else
+				data.handle.handle = handle->id;
 		}
 		break;
 	}
