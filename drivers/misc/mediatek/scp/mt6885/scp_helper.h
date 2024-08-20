@@ -68,6 +68,26 @@ enum SEMAPHORE_FLAG {
 	NR_FLAG = 9,
 };
 
+/* scp semaphore 3way definition */
+enum SEMAPHORE_3WAY_FLAG {
+	SEMA_SCP_3WAY_UART = 0,
+	SEMA_SCP_3WAY_C2C_A = 1,
+	SEMA_SCP_3WAY_C2C_B = 2,
+	SEMA_SCP_3WAY_DVFS = 3,
+	SEMA_SCP_3WAY_AUDIO = 4,
+	SEMA_SCP_3WAY_AUDIOREG = 5,
+	SEMA_SCP_3WAY_NUM = 6,
+};
+
+/* scp semaphore status */
+enum  SEMAPHORE_STATUS {
+	SEMAPHORE_NOT_INIT = -1,
+	SEMAPHORE_SUCCESS = 0,
+	SEMAPHORE_FAIL = 1,
+};
+
+#define SCP_SEMA_AUDIOREG SEMA_SCP_3WAY_AUDIOREG
+
 /* scp reset status */
 enum SCP_RESET_STATUS {
 	RESET_STATUS_STOP = 0,
@@ -122,6 +142,9 @@ enum scp_reserve_mem_id_t {
 #ifdef SCP_PARAMS_TO_SCP_SUPPORT
 	SCP_DRV_PARAMS_MEM_ID,
 #endif
+#ifdef CONFIG_MTK_ULTRASND_PROXIMITY
+	ULTRA_MEM_ID,
+#endif
 	SENS_FB_MEM_ID,
 	NUMS_MEM_ID,
 };
@@ -154,7 +177,6 @@ struct scp_region_info_st {
 	uint32_t scpctl;
 	uint32_t regdump_start;
 	uint32_t regdump_size;
-	uint32_t ap_params_start;
 	uint32_t nOperator;
 	uint32_t nPCBVersion;
 	uint32_t nProject;
@@ -234,8 +256,8 @@ extern void scp_enable_sram(void);
 extern int scp_sys_full_reset(void);
 extern void scp_reset_awake_counts(void);
 extern void scp_awake_init(void);
-
 #if SCP_RECOVERY_SUPPORT
+
 extern unsigned int scp_reset_by_cmd;
 extern struct scp_region_info_st scp_region_info_copy;
 extern struct scp_region_info_st *scp_region_info;
@@ -243,8 +265,4 @@ extern void __iomem *scp_ap_dram_virt;
 extern void __iomem *scp_loader_virt;
 extern void __iomem *scp_regdump_virt;
 #endif
-
-__attribute__((weak))
-int sensor_params_to_scp(phys_addr_t addr_vir, size_t size);
-
 #endif

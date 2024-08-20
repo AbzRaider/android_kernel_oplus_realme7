@@ -52,18 +52,20 @@ static struct scp_reserve_mblock scp_reserve_mblock[] = {
 		.start_virt = 0x0,
 		.size = 0x5A00,  /* 22.5KB */
 	},
-	{
-		.num = SENS_FB_MEM_ID,
-		.start_phys = 0x0,
-		.start_virt = 0x0,
-		.size = 0x1000,  /* 4KB */
-	},
 #ifdef SCP_PARAMS_TO_SCP_SUPPORT
 	{
 		.num = SCP_DRV_PARAMS_MEM_ID,
 		.start_phys = 0x0,
 		.start_virt = 0x0,
 		.size = 0x100,  /* 256 bytes */
+	},
+#endif
+#ifdef CONFIG_MTK_ULTRASND_PROXIMITY
+	{
+		.num = ULTRA_MEM_ID,
+		.start_phys = 0,
+		.start_virt = 0,
+		.size = 0x19000,
 	},
 #endif
 };

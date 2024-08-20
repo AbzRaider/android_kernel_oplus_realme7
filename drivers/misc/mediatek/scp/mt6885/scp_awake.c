@@ -62,7 +62,6 @@ int scp_awake_lock(void *_scp_id)
 	int count = 0;
 	int ret = -1;
 	unsigned int tmp;
-	unsigned int tmp_clr;
 
 	if (scp_id >= SCP_CORE_TOTAL) {
 		pr_notice("%s: SCP ID >= SCP_CORE_TOTAL\n", __func__);
@@ -122,16 +121,8 @@ int scp_awake_lock(void *_scp_id)
 #if SCP_RECOVERY_SUPPORT
 		if (scp_set_reset_status() == RESET_STATUS_STOP) {
 			pr_notice("%s: start to reset scp...\n", __func__);
-
 			/* trigger halt isr, force scp enter wfi */
 			writel(B_GIPC4_SETCLR_0, R_GIPC_IN_SET);
-			/* For mb() hang debug, trigger wdt isr */
-			writel(V_INSTANT_WDT, R_CORE0_WDT_CFG);
-			tmp = readl(INFRA_IRQ_SET);
-			tmp_clr = readl(INFRA_IRQ_CLEAR);
-			pr_notice("%s: INFRA_IRQ_SET %x INFRA_IRQ_CLEAR %x\n",
-				__func__, tmp, tmp_clr);
-
 			scp_send_reset_wq(RESET_TYPE_AWAKE);
 		} else
 			pr_notice("%s: scp resetting\n", __func__);
@@ -210,8 +201,8 @@ int scp_awake_unlock(void *_scp_id)
 	/* scp unlock awake success*/
 	if (ret != -1) {
 		if (*scp_awake_count <= 0)
-			pr_err("%s:%s awake_count=%d NOT SYNC!\n", __func__,
-			core_id, *scp_awake_count);
+			pr_err("%s:%s awake_count=%d NOT SYNC!\n", __func__
+			, core_id, *scp_awake_count);
 
 		if (*scp_awake_count > 0)
 			*scp_awake_count = *scp_awake_count - 1;
@@ -259,10 +250,9 @@ int scp_sys_full_reset(void)
 	/* reset dram from dram back */
 	if ((int)(scp_region_info_copy.ap_dram_size) > 0) {
 		tmp = (void *)(scp_ap_dram_virt +
-			ROUNDUP(scp_region_info_copy.ap_dram_size, 1024));
-		/* mt6853 don't have core1 only dram region, remove *2 */
+			ROUNDUP(scp_region_info_copy.ap_dram_size, 1024)*2);
 		memset(scp_ap_dram_virt, 0,
-			ROUNDUP(scp_region_info_copy.ap_dram_size, 1024));
+			ROUNDUP(scp_region_info_copy.ap_dram_size, 1024)*2);
 		memcpy(scp_ap_dram_virt, tmp,
 			scp_region_info_copy.ap_dram_size);
 	}
