@@ -216,7 +216,7 @@ static void switch_port_to_none(struct ssusb_mtk *ssusb)
 static void switch_port_to_host(struct ssusb_mtk *ssusb)
 {
 	int retval;
-
+	u32 temp;
 	u32 check_clk = 0;
 
 	dev_info(ssusb->dev, "%s\n", __func__);
@@ -239,6 +239,11 @@ static void switch_port_to_host(struct ssusb_mtk *ssusb)
 		ssusb->is_host = true;
 
 	/* after all clocks are stable */
+	if (ssusb->noise_still_tr) {
+		temp = readl(ssusb->mac_base + U3D_USB_BUS_PERFORMANCE);
+		temp |= NOISE_STILL_TRANSFER;
+		writel(temp, ssusb->mac_base + U3D_USB_BUS_PERFORMANCE);
+	}
 }
 
 static void switch_port_to_device(struct ssusb_mtk *ssusb)
@@ -287,6 +292,11 @@ void ssusb_gadget_disconnect(struct mtu3 *mtu)
 	usb_gadget_set_state(&mtu->g, USB_STATE_NOTATTACHED);
 }
 
+#ifdef OPLUS_FEATURE_CHG_BASIC
+	unsigned int usb_mode;
+#endif
+
+
 static void ssusb_set_mode(struct work_struct *work)
 {
 	struct otg_switch_mtk *__otg_sx = container_of(to_delayed_work(work),
@@ -296,7 +306,9 @@ static void ssusb_set_mode(struct work_struct *work)
 		container_of(otg_sx, struct ssusb_mtk, otg_switch);
 	struct mtu3 *mtu = ssusb->u3d;
 	unsigned long flags;
+#ifndef OPLUS_FEATURE_CHG_BASIC
 	unsigned int usb_mode;
+#endif
 
 	spin_lock_irqsave(&otg_sx->dr_lock, flags);
 	usb_mode = __otg_sx->desire_usb_mode;
