@@ -327,7 +327,7 @@ static void devapc_violation_triggered(uint32_t vio_idx,
 		}
 	}
 
-	if (dbg_stat->enable_KE) {
+	if (dbg_stat->enable_KE&&(strncmp(vio_master, "APMCU_READ", 10))) {
 		DEVAPC_MSG("Violation master: %s access %s\n", vio_master,
 				device_info[vio_idx].device);
 		DEVAPC_MSG("Device APC Violation Issue/%s", subsys_str);
@@ -760,6 +760,10 @@ static irqreturn_t devapc_violation_irq(int irq_number, void *dev_id)
 					vio_master);
 		}
 	}
+       if((strncmp(vio_master, "APMCU_READ", 10))){
+               DEVAPC_MSG("Bypass APMCU read SRAMROM violation by test!!!\n");
+               BUG();
+       }
 
 	dump_backtrace(regs);
 
