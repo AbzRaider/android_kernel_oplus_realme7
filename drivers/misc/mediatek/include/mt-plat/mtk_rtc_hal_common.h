@@ -34,6 +34,27 @@ enum rtc_spare_enum {
 	RTC_32K_LESS,
 	RTC_LP_DET,
 	RTC_FG_INIT,
+	#ifdef OPLUS_BUG_STABILITY
+	/* Bin.Li@EXP.BSP.bootloader.bootflow, 2017/05/24,, Add for /panic mode/silence mode/meta mode/SAU mode */
+	RTC_REBOOT_KERNEL, // 15
+	RTC_SILENCE_BOOT,//16
+	RTC_META_BOOT,//17
+	RTC_SAU_BOOT,//18
+	#endif /* OPLUS_BUG_STABILITY */
+	#ifdef OPLUS_BUG_STABILITY
+	/* Qiao.Hu@EXP.BSP.BaseDrv.CHG.Basic, 2017/08/02, Add for charger memory electricity */
+	RTC_OPPO_BATTERY,//19
+	#endif /* OPLUS_BUG_STABILITY */
+#ifdef OPLUS_BUG_STABILITY
+	RTC_FACTORY_BOOT,
+#endif /* OPLUS_BUG_STABILITY */
+#ifdef OPLUS_BUG_STABILITY
+	RTC_SENSOR_CAUSE_PANIC,
+#endif /* OPLUS_BUG_STABILITY */
+	RTC_SAFE_BOOT,
+#ifdef OPLUS_FEATURE_AGINGTEST
+	RTC_AGINGTEST_BOOT,
+#endif /*OPLUS_FEATURE_AGINGTEST */
 	RTC_SPAR_NUM
 };
 
