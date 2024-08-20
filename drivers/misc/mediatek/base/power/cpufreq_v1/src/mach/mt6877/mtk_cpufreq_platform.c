@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 MediaTek Inc.
+ * Copyright (C) 2020 MediaTek Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -28,7 +28,7 @@
 #include "mtk_cpufreq_platform.h"
 #include "../../mtk_cpufreq_hybrid.h"
 #include "mtk_devinfo.h"
-#include <soc/oplus/system/oplus_project.h>
+
 
 static struct regulator *regulator_proc1;
 static struct regulator *regulator_proc2;
@@ -38,11 +38,11 @@ static struct regulator *regulator_sram2;
 static unsigned long apmixed_base	= 0x1000c000;
 static unsigned long mcucfg_base	= 0x0c530000;
 
-#define APMIXED_NODE	"mediatek,mt6853-apmixedsys"
+#define APMIXED_NODE	"mediatek,mt6877-apmixedsys"
 #define MCUCFG_NODE		"mediatek,mcucfg-dvfs"
 #define ARMPLL_LL_CON1		(apmixed_base + 0x20c)	/* ARMPLL1 */
 #define ARMPLL_L_CON1		(apmixed_base + 0x21c)	/* ARMPLL2 */
-#define CCIPLL_CON1			(apmixed_base + 0x25c)
+#define CCIPLL_CON1		(apmixed_base + 0x23c)
 
 #define CKDIV1_LL_CFG		(mcucfg_base + 0xa2a0)	/* MP0_PLL_DIVIDER */
 #define CKDIV1_L_CFG		(mcucfg_base + 0xa2a4)	/* MP1_PLL_DIVIDER */
@@ -628,89 +628,18 @@ int mt_cpufreq_dts_map(void)
 
 unsigned int _mt_cpufreq_get_cpu_level(void)
 {
-#ifndef CONFIG_MT6360_PMIC
-	unsigned int lv = CPU_LEVEL_3;
-#else
-	unsigned int lv = CPU_LEVEL_4;
-#endif
-	int val = get_devinfo_with_index(7) & 0xFF; /* segment code */
-	int cpulv0 = get_devinfo_with_index(52); /* cpu level code */
-	int cpulv = get_devinfo_with_index(62); /* cpu level code */
-	int cpulv1 = (cpulv0 & 0xFF); /* cpu level code [7:0]*/
-	int cpulv2 = (cpulv & 0x300); /* cpu level code [9:8]*/
-	int seg = val & 0x3; /* segment cod[1:0] */
+	unsigned int lv = CPU_LEVEL_0;
+	int val = get_devinfo_with_index(7) & 0xF; /* segment code */
 
-	if (!val) {
-#ifndef CONFIG_MT6360_PMIC
-		lv = CPU_LEVEL_1;
-#else
+	if (val == 2)
 		lv = CPU_LEVEL_2;
-#endif
-	} else {
-		if (seg) {
-#ifndef CONFIG_MT6360_PMIC
-			lv = CPU_LEVEL_1;
-#else
-			lv = CPU_LEVEL_2;
-#endif
-		}
-	}
+	else if (val == 3)
+		lv = CPU_LEVEL_0;
+	else
+		lv = CPU_LEVEL_1;
 
-#if defined(K6853TV1)
-	if (!val) {
-		if (cpulv1 > 1 || cpulv2) {
-#ifndef CONFIG_MT6360_PMIC
-			lv = CPU_LEVEL_3;
-#else
-			lv = CPU_LEVEL_4;
-#endif
-		}
-	}
-	WARN_ON(GEN_DB_ON(lv < CPU_LEVEL_3,
-		"cpufreq segment wrong, efuse_val = 0x%x 0x%x",
-		val, cpulv));
-#endif
-
-	if ((20613 == get_project()) || (20680 == get_project()) || (20686 == get_project())
-  		|| (20631 == get_project()) || (20632 == get_project()) || (0x206B4 == get_project())
-  		|| (20633 == get_project()) || (20634 == get_project()) || (20635 == get_project())) {
-  		if (!val) {
-  			if (cpulv1 > 1 || cpulv2) {
-  			#ifndef CONFIG_MT6360_PMIC
-  				lv = CPU_LEVEL_3;
-  			#else
-  				lv = CPU_LEVEL_4;
-  				tag_pr_info("turbo cpufreq to 2.4GHZ in oppo_6853_20630\n");
-  			#endif
-  			}
-  		}
-  	WARN_ON(GEN_DB_ON(lv < CPU_LEVEL_3,
-  		"cpufreq segment wrong, efuse_val = 0x%x 0x%x",
-  		val, cpulv));
-  	}
-
-#if defined(QEA)
-	if (!val) {
-		if (cpulv1 > 1 || cpulv2) {
-#ifndef CONFIG_MT6360_PMIC
-			lv = CPU_LEVEL_5;
-#else
-			lv = CPU_LEVEL_6;
-#endif
-		}
-	}
-	WARN_ON(GEN_DB_ON(lv < CPU_LEVEL_5,
-			"cpufreq segment wrong for qea, efuse_val = 0x%x 0x%x",
-		val, cpulv));
-#endif
-
-#if defined(TURBO)
-	lv = CPU_LEVEL_0;
-	tag_pr_info("turbo project over\n");
-#endif
-
-	tag_pr_info("%d, %d, Settle time(%d, %d) efuse_val = 0x%x 0x%x 0x%x 0x%x\n",
-		lv, turbo_flag, UP_SRATE, DOWN_SRATE, val, cpulv, cpulv1, cpulv2);
+	tag_pr_info("%d, Settle time(%d, %d) efuse_val = 0x%x\n",
+		lv, UP_SRATE, DOWN_SRATE, val);
 	return lv;
 }
 #ifdef DFD_WORKAROUND

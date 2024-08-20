@@ -14,8 +14,6 @@
 #include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/regulator/consumer.h>
-#include <linux/kernel.h>
-#include <mt-plat/mtk_devinfo.h>
 
 #ifdef CONFIG_MTK_FREQ_HOPPING
 #include <mtk_freqhopping_drv.h>
@@ -28,7 +26,7 @@
 #include "mtk_cpufreq_platform.h"
 #include "../../mtk_cpufreq_hybrid.h"
 #include "mtk_devinfo.h"
-#include <soc/oplus/system/oplus_project.h>
+
 
 static struct regulator *regulator_proc1;
 static struct regulator *regulator_proc2;
@@ -38,8 +36,8 @@ static struct regulator *regulator_sram2;
 static unsigned long apmixed_base	= 0x1000c000;
 static unsigned long mcucfg_base	= 0x0c530000;
 
-#define APMIXED_NODE	"mediatek,mt6853-apmixedsys"
-#define MCUCFG_NODE		"mediatek,mcucfg-dvfs"
+#define APMIXED_NODE	"mediatek,apmixed"
+#define MCUCFG_NODE		"mediatek,mcucfg"
 #define ARMPLL_LL_CON1		(apmixed_base + 0x20c)	/* ARMPLL1 */
 #define ARMPLL_L_CON1		(apmixed_base + 0x21c)	/* ARMPLL2 */
 #define CCIPLL_CON1			(apmixed_base + 0x25c)
@@ -135,27 +133,29 @@ static unsigned int get_cur_volt_proc_cpu(struct buck_ctrl_t *buck_p)
 	return rdata;
 }
 
-static unsigned int mt6359_vsram_transfer2pmicval(unsigned int volt)
+static unsigned int mt6315_vsram_transfer2pmicval(unsigned int volt)
 {
-	return ((volt - VSRAM_BASE) + VSRAM_STEP - 1) / VSRAM_STEP;
+	return ((volt - 10000) + 625 - 1) / 625;
 }
 
-static unsigned int mt6359_vsram_transfer2volt(unsigned int val)
+static unsigned int mt6315_vsram_transfer2volt(unsigned int val)
 {
-	return val * VSRAM_STEP + VSRAM_BASE;
+	return val * 625 + 10000;
 }
 
-static unsigned int mt6359_vproc_transfer2pmicval(unsigned int volt)
+static unsigned int mt6315_vproc_transfer2pmicval(unsigned int volt)
 {
-	return ((volt - VPROC_BASE) + VPROC_STEP - 1) / VPROC_STEP;
+	//return ((volt - 40000) + 625 - 1) / 625;
+	return (volt + 625 - 1) / 625;
 }
 
-static unsigned int mt6359_vproc_transfer2volt(unsigned int val)
+static unsigned int mt6315_vproc_transfer2volt(unsigned int val)
 {
-	return val * VPROC_STEP + VPROC_BASE;
+	//return val * 625 + 40000;
+	return val * 625;
 }
 
-static unsigned int mt6359_vproc_settletime(unsigned int old_volt,
+static unsigned int mt6315_vproc_settletime(unsigned int old_volt,
 	unsigned int new_volt)
 {
 	/* UP:10mv/us DOWN:7.5mv/us */
@@ -196,7 +196,7 @@ static unsigned int get_cur_volt_sram_cpu(struct buck_ctrl_t *buck_p)
 	return rdata;
 }
 
-static unsigned int mt6359_vsram_settletime(unsigned int old_volt,
+static unsigned int mt6315_vsram_settletime(unsigned int old_volt,
 	unsigned int new_volt)
 {
 	/* UP:10mv/us DOWN:7.5mv/us */
@@ -209,45 +209,45 @@ static unsigned int mt6359_vsram_settletime(unsigned int old_volt,
 }
 
 /* upper layer CANNOT use 'set' function in secure path */
-static struct buck_ctrl_ops buck_ops_mt6359_vproc = {
+static struct buck_ctrl_ops buck_ops_mt6315_vproc = {
 	.get_cur_volt		= get_cur_volt_proc_cpu,
 	.set_cur_volt		= set_cur_volt_proc_cpu,
-	.transfer2pmicval	= mt6359_vproc_transfer2pmicval,
-	.transfer2volt		= mt6359_vproc_transfer2volt,
-	.settletime		= mt6359_vproc_settletime,
+	.transfer2pmicval	= mt6315_vproc_transfer2pmicval,
+	.transfer2volt		= mt6315_vproc_transfer2volt,
+	.settletime		= mt6315_vproc_settletime,
 };
 
-static struct buck_ctrl_ops buck_ops_mt6359_vsram = {
+static struct buck_ctrl_ops buck_ops_mt6315_vsram = {
 	.get_cur_volt		= get_cur_volt_sram_cpu,
 	.set_cur_volt		= set_cur_volt_sram_cpu,
-	.transfer2pmicval	= mt6359_vsram_transfer2pmicval,
-	.transfer2volt		= mt6359_vsram_transfer2volt,
-	.settletime		= mt6359_vsram_settletime,
+	.transfer2pmicval	= mt6315_vsram_transfer2pmicval,
+	.transfer2volt		= mt6315_vsram_transfer2volt,
+	.settletime		= mt6315_vsram_settletime,
 };
 
 struct buck_ctrl_t buck_ctrl[NR_MT_BUCK] = {
 	[CPU_DVFS_VPROC2] = {
-		.name		= __stringify(BUCK_mt6359_VPROC),
+		.name		= __stringify(BUCK_mt6315_VPROC),
 		.buck_id	= CPU_DVFS_VPROC2,
-		.buck_ops	= &buck_ops_mt6359_vproc,
+		.buck_ops	= &buck_ops_mt6315_vproc,
 	},
 
 	[CPU_DVFS_VPROC1] = {
-		.name		= __stringify(BUCK_mt6359_VPROC),
+		.name		= __stringify(BUCK_mt6315_VPROC),
 		.buck_id	= CPU_DVFS_VPROC1,
-		.buck_ops	= &buck_ops_mt6359_vproc,
+		.buck_ops	= &buck_ops_mt6315_vproc,
 	},
 
 	[CPU_DVFS_VSRAM2] = {
-		.name		= __stringify(BUCK_mt6359_VSRAM),
+		.name		= __stringify(BUCK_mt6315_VSRAM),
 		.buck_id	= CPU_DVFS_VSRAM2,
-		.buck_ops	= &buck_ops_mt6359_vsram,
+		.buck_ops	= &buck_ops_mt6315_vsram,
 	},
 
 	[CPU_DVFS_VSRAM1] = {
-		.name		= __stringify(BUCK_mt6359_VSRAM),
+		.name		= __stringify(BUCK_mt6315_VSRAM),
 		.buck_id	= CPU_DVFS_VSRAM1,
-		.buck_ops	= &buck_ops_mt6359_vsram,
+		.buck_ops	= &buck_ops_mt6315_vsram,
 	},
 };
 
@@ -572,25 +572,25 @@ int mt_cpufreq_turbo_config(enum mt_cpu_dvfs_id id,
 
 int mt_cpufreq_regulator_map(struct platform_device *pdev)
 {
-	regulator_proc1 = devm_regulator_get_optional(&pdev->dev, "proc1");
+	regulator_proc1 = regulator_get_optional(&pdev->dev, "6_vbuck1");
 	if (GEN_DB_ON(IS_ERR(regulator_proc1), "vproc1 Get Failed")) {
 		tag_pr_info("@@6vbuck1 Get Failed\n");
 		return -ENODEV;
 	}
 
-	regulator_proc2 = devm_regulator_get_optional(&pdev->dev, "proc2");
+	regulator_proc2 = regulator_get_optional(&pdev->dev, "6_vbuck3");
 	if (GEN_DB_ON(IS_ERR(regulator_proc2), "6vbuck3 Get Failed")) {
 		tag_pr_info("@@6vbuck3 Get Failed\n");
 		return -ENODEV;
 	}
 
-	regulator_sram1 = devm_regulator_get_optional(&pdev->dev, "sram_proc1");
+	regulator_sram1 = regulator_get_optional(&pdev->dev, "vsram_proc1");
 	if (GEN_DB_ON(IS_ERR(regulator_sram1), "vsram_proc1 Get Failed")) {
 		tag_pr_info("@@vsram1 Get Failed\n");
 		return -ENODEV;
 	}
 
-	regulator_sram2 = devm_regulator_get_optional(&pdev->dev, "sram_proc2");
+	regulator_sram2 = regulator_get_optional(&pdev->dev, "vsram_proc2");
 	if (GEN_DB_ON(IS_ERR(regulator_sram2), "vsram_proc2 Get Failed")) {
 		tag_pr_info("@@vsram2 Get Failed\n");
 		return -ENODEV;
@@ -628,89 +628,29 @@ int mt_cpufreq_dts_map(void)
 
 unsigned int _mt_cpufreq_get_cpu_level(void)
 {
-#ifndef CONFIG_MT6360_PMIC
-	unsigned int lv = CPU_LEVEL_3;
-#else
-	unsigned int lv = CPU_LEVEL_4;
-#endif
-	int val = get_devinfo_with_index(7) & 0xFF; /* segment code */
-	int cpulv0 = get_devinfo_with_index(52); /* cpu level code */
-	int cpulv = get_devinfo_with_index(62); /* cpu level code */
-	int cpulv1 = (cpulv0 & 0xFF); /* cpu level code [7:0]*/
-	int cpulv2 = (cpulv & 0x300); /* cpu level code [9:8]*/
-	int seg = val & 0x3; /* segment cod[1:0] */
+	unsigned int lv = CPU_LEVEL_0;
 
-	if (!val) {
-#ifndef CONFIG_MT6360_PMIC
-		lv = CPU_LEVEL_1;
-#else
-		lv = CPU_LEVEL_2;
-#endif
-	} else {
-		if (seg) {
-#ifndef CONFIG_MT6360_PMIC
-			lv = CPU_LEVEL_1;
-#else
-			lv = CPU_LEVEL_2;
-#endif
-		}
-	}
+	int val = (get_devinfo_with_index(7) & 0xFF);
+	int ver = (get_devinfo_with_index(141) & 0xFF);
+	int env_bit = get_devinfo_with_index(141);
 
-#if defined(K6853TV1)
-	if (!val) {
-		if (cpulv1 > 1 || cpulv2) {
-#ifndef CONFIG_MT6360_PMIC
+
+	env_bit = (env_bit >> 31) & 0x1;
+
+	if (val == 0x01) {
+		if (ver < 2 && env_bit == 1)
 			lv = CPU_LEVEL_3;
-#else
-			lv = CPU_LEVEL_4;
-#endif
-		}
-	}
-	WARN_ON(GEN_DB_ON(lv < CPU_LEVEL_3,
-		"cpufreq segment wrong, efuse_val = 0x%x 0x%x",
-		val, cpulv));
-#endif
+		else
+			lv = CPU_LEVEL_0;
+	} else if (val == 0x10)
+		lv = CPU_LEVEL_2;
+	else if (val == 0x30)
+		lv = CPU_LEVEL_1;
 
-	if ((20613 == get_project()) || (20680 == get_project()) || (20686 == get_project())
-  		|| (20631 == get_project()) || (20632 == get_project()) || (0x206B4 == get_project())
-  		|| (20633 == get_project()) || (20634 == get_project()) || (20635 == get_project())) {
-  		if (!val) {
-  			if (cpulv1 > 1 || cpulv2) {
-  			#ifndef CONFIG_MT6360_PMIC
-  				lv = CPU_LEVEL_3;
-  			#else
-  				lv = CPU_LEVEL_4;
-  				tag_pr_info("turbo cpufreq to 2.4GHZ in oppo_6853_20630\n");
-  			#endif
-  			}
-  		}
-  	WARN_ON(GEN_DB_ON(lv < CPU_LEVEL_3,
-  		"cpufreq segment wrong, efuse_val = 0x%x 0x%x",
-  		val, cpulv));
-  	}
+	turbo_flag = 0;
 
-#if defined(QEA)
-	if (!val) {
-		if (cpulv1 > 1 || cpulv2) {
-#ifndef CONFIG_MT6360_PMIC
-			lv = CPU_LEVEL_5;
-#else
-			lv = CPU_LEVEL_6;
-#endif
-		}
-	}
-	WARN_ON(GEN_DB_ON(lv < CPU_LEVEL_5,
-			"cpufreq segment wrong for qea, efuse_val = 0x%x 0x%x",
-		val, cpulv));
-#endif
-
-#if defined(TURBO)
-	lv = CPU_LEVEL_0;
-	tag_pr_info("turbo project over\n");
-#endif
-
-	tag_pr_info("%d, %d, Settle time(%d, %d) efuse_val = 0x%x 0x%x 0x%x 0x%x\n",
-		lv, turbo_flag, UP_SRATE, DOWN_SRATE, val, cpulv, cpulv1, cpulv2);
+	tag_pr_info("%d, %d, Settle time(%d, %d) efuse_val = 0x%x ver = %d\n",
+		lv, turbo_flag, UP_SRATE, DOWN_SRATE, val, ver);
 	return lv;
 }
 #ifdef DFD_WORKAROUND
@@ -763,10 +703,14 @@ void cpufreq_get_cluster_cpus(struct cpumask *cpu_mask, unsigned int cid)
 {
 	if (cid == 0) {
 		cpumask_setall(cpu_mask);
+		cpumask_clear_cpu(4, cpu_mask);
+		cpumask_clear_cpu(5, cpu_mask);
 		cpumask_clear_cpu(6, cpu_mask);
 		cpumask_clear_cpu(7, cpu_mask);
 	} else if (cid == 1) {
 		cpumask_clear(cpu_mask);
+		cpumask_set_cpu(4, cpu_mask);
+		cpumask_set_cpu(5, cpu_mask);
 		cpumask_set_cpu(6, cpu_mask);
 		cpumask_set_cpu(7, cpu_mask);
 	}
