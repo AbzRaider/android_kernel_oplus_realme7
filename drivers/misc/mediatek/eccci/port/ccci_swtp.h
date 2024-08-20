@@ -44,7 +44,12 @@ struct swtp_t {
 /*****************************************************************************/
 /* External API Region called by ccci_swtp object */
 /*****************************************************************************/
-extern void inject_pin_status_event(int pin_value, const char pin_name[]);
 extern int swtp_init(int md_id);
 extern void inject_pin_status_event(int pin_value, const char pin_name[]);
+//#ifdef OPLUS_FEATURE_SWTP
+//Fei.Yang@RM.NW.RF ,2020/07/04
+//Add for caple detect when SIM plug in
+extern int ccci_get_gpio175_value(void);
+extern unsigned int is_project(int project);
+//#endif /* OPLUS_FEATURE_SWTP */
 #endif				/* __SWTP_H__ */

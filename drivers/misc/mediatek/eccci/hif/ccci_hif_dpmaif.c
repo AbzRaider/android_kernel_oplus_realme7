@@ -11,6 +11,7 @@
  * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
 
+#include <linux/atomic.h>
 #include <linux/list.h>
 #include <linux/device.h>
 #include <linux/module.h>
@@ -2481,6 +2482,27 @@ static int dpmaif_tx_release(unsigned char q_num, unsigned short budget)
 	}
 }
 
+static int dpmaif_wait_resume_done(void)
+{
+	int cnt = 0;
+
+	while (atomic_read(&dpmaif_ctrl->suspend_flag) == 1) {
+		cnt++;
+		if (cnt >= 1600000) {
+			CCCI_NORMAL_LOG(-1, TAG,
+				"[%s] warning: suspend_flag = 1; (cnt: %d)",
+				__func__, cnt);
+			return -1;
+		}
+	}
+
+	if (cnt)
+		CCCI_NORMAL_LOG(-1, TAG,
+			"[%s] suspend_flag = 0; (cnt: %d)",
+			__func__, cnt);
+
+	return 0;
+}
 
 #ifdef USING_TX_DONE_KERNEL_THREAD
 
@@ -2606,6 +2628,11 @@ static void dpmaif_tx_done(struct work_struct *work)
 	struct hif_dpmaif_ctrl *hif_ctrl = dpmaif_ctrl;
 	int ret;
 	unsigned int L2TISAR0;
+
+	if (dpmaif_wait_resume_done() < 0)
+		queue_delayed_work(hif_ctrl->txq[txq->index].worker,
+				&hif_ctrl->txq[txq->index].dpmaif_tx_work,
+				msecs_to_jiffies(1000 / HZ));
 
 	/* This is used to avoid race condition which may cause KE */
 	if (dpmaif_ctrl->dpmaif_state != HIFDPMAIF_STATE_PWRON) {
@@ -2828,6 +2855,9 @@ static int dpmaif_tx_send_skb(unsigned char hif_id, int qno,
 	/* 1. parameters check*/
 	if (!skb)
 		return 0;
+
+	if (dpmaif_wait_resume_done() < 0)
+		return -EBUSY;
 
 	if (skb->mark & UIDMASK) {
 		g_dp_uid_mask_count++;
@@ -3894,6 +3924,7 @@ int dpmaif_start(unsigned char hif_id)
 	/* cg set */
 	ccci_set_clk_by_id(1, 1);
 #ifdef MT6297
+
 	ccci_set_clk_by_id(2, 1);
 
 	reg_value = ccci_read32(infra_ao_mem_base, 0);
@@ -4564,6 +4595,7 @@ int ccci_dpmaif_hif_init(unsigned char hif_id, unsigned char md_id)
 	hif_ctrl->md_id = md_id;
 	hif_ctrl->hif_id = hif_id;
 	dpmaif_ctrl = hif_ctrl;
+	atomic_set(&dpmaif_ctrl->suspend_flag, -1);
 
 #ifndef MT6297
 	/* HW: register, interrupt id,  */
@@ -4653,6 +4685,7 @@ int ccci_dpmaif_hif_init(unsigned char hif_id, unsigned char md_id)
 #ifdef MT6297
 	mtk_ccci_speed_monitor_init();
 #endif
+	atomic_set(&dpmaif_ctrl->suspend_flag, 0);
 	return 0;
 
 DPMAIF_INIT_FAIL:
@@ -4661,4 +4694,43 @@ DPMAIF_INIT_FAIL:
 
 	return ret;
 }
+static unsigned int g_suspend_cnt;
+static unsigned int g_resume_cnt;
 
+int dpmaif_suspend_noirq(struct device *dev)
+{
+	g_suspend_cnt++;
+
+	if ((!dpmaif_ctrl) || (atomic_read(&dpmaif_ctrl->suspend_flag) < 0))
+		return 0;
+
+	CCCI_NORMAL_LOG(-1, TAG, "[%s] suspend_cnt: %u\n", __func__, g_suspend_cnt);
+
+	atomic_set(&dpmaif_ctrl->suspend_flag, 1);
+
+	dpmaif_suspend(dpmaif_ctrl->hif_id);
+
+	return 0;
+}
+
+int dpmaif_resume_noirq(struct device *dev)
+{
+	g_resume_cnt++;
+
+	if ((!dpmaif_ctrl) || (atomic_read(&dpmaif_ctrl->suspend_flag) < 0))
+		return 0;
+
+	CCCI_NORMAL_LOG(-1, TAG,
+		"[%s] resume_cnt: %u\n", __func__, g_resume_cnt);
+
+	if (dpmaif_ctrl->dpmaif_state != HIFDPMAIF_STATE_PWRON &&
+		dpmaif_ctrl->dpmaif_state != HIFDPMAIF_STATE_EXCEPTION)
+		CCCI_ERROR_LOG(-1, TAG, "[%s] dpmaif_state: %d\n",
+			__func__, dpmaif_ctrl->dpmaif_state);
+	else
+		dpmaif_resume(dpmaif_ctrl->hif_id);
+
+	atomic_set(&dpmaif_ctrl->suspend_flag, 0);
+
+	return 0;
+}

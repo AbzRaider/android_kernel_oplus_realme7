@@ -412,6 +412,7 @@ struct hif_dpmaif_ctrl {
 	char traffic_started;
 #endif
 
+	atomic_t suspend_flag;
 };
 
 static inline int ccci_dpma_hif_send_skb(unsigned char hif_id, int tx_qno,
@@ -503,5 +504,6 @@ extern int ccmni_header(int md_id, int ccmni_idx, struct sk_buff *skb);
 extern int ccmni_rx_list_push(int md_id, int ccmni_idx, struct list_head *head,
 			bool is_gro);
 #endif
-
+extern int dpmaif_suspend_noirq(struct device *dev);
+extern int dpmaif_resume_noirq(struct device *dev);
 #endif				/* __MODEM_DPMA_H__ */

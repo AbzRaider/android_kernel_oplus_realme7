@@ -17,7 +17,14 @@
 #endif
 
 #include "ccci_fsm_internal.h"
-
+//#ifdef OPLUS_FEATURE_SWTP
+//Fei.Yang@RM.NW.RF ,2020/07/04
+//Add for caple detect when SIM plug in
+#include "ccci_swtp.h"
+//#endif /* OPLUS_FEATURE_SWTP */
+//#ifdef OPLUS_FEATURE_SWTP
+#include <linux/proc_fs.h>
+//#endif  /*OPLUS_FEATURE_SWTP*/
 signed int __weak battery_get_bat_voltage(void)
 {
 	pr_debug("[ccci/dummy] %s is not supported!\n", __func__);
@@ -558,7 +565,7 @@ long ccci_fsm_ioctl(int md_id, unsigned int cmd, unsigned long arg)
 		if (ctl->boot_count == boot_ready_count || ctl->md_state != READY)
 			break;
 		CCCI_NORMAL_LOG(md_id, FSM,
-				"MD power off called by %s, boot_count %d ,ready_count %lu\n",
+				"MD power off called by %s, boot_count %lu ,ready_count %lu\n",
 				current->comm, ctl->boot_count, boot_ready_count);
 		inject_md_status_event(md_id, MD_STA_EV_RILD_POWEROFF_START,
 				current->comm);
@@ -593,6 +600,16 @@ long ccci_fsm_ioctl(int md_id, unsigned int cmd, unsigned long arg)
 			"get modem exception type=%d ret=%d\n",
 			ctl->ee_ctl.ex_type, ret);
 		break;
+    //#ifdef OPLUS_FEATURE_SWTP
+    //Fei.Yang@RM.NW.RF ,2020/07/04
+    //Add for caple detect when SIM plug in
+    case CCCI_IOC_SIM_INSERTED_FOR_SWITCH_RF_SAR:
+        CCCI_NORMAL_LOG(md_id, FSM,
+            "SIM inserted notify to ioctl called by %s\n", current->comm);
+        ret = ccci_get_gpio175_value();
+    //Wrire the return value into Node file
+    //....
+    //#endif /* OPLUS_FEATURE_SWTP */
 	default:
 		ret = fsm_md_data_ioctl(md_id, cmd, arg);
 		break;

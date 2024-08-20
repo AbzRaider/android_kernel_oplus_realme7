@@ -22,6 +22,9 @@
 #include "ccci_config.h"
 #include <linux/clk.h>
 #include <mach/mtk_pbm.h>
+#ifdef FEATURE_CLK_BUF
+#include <mtk_clkbuf_ctl.h>
+#endif
 #ifdef CONFIG_MTK_EMI_BWL
 #include <emi_mbw.h>
 #endif
@@ -38,7 +41,7 @@
 #include <linux/pm_qos.h>
 #include <helio-dvfsrc-opp.h>
 #endif
-#include <clk-mt6833-pg.h>
+#include <clk-mt6885-pg.h>
 #include "ccci_core.h"
 #include "ccci_platform.h"
 
@@ -48,6 +51,7 @@
 #include "ap_md_reg_dump.h"
 #include <devapc_public.h>
 #include "ccci_fsm.h"
+#include "hif/ccci_hif_dpmaif.h"
 
 static struct ccci_clk_node clk_table[] = {
 	{ NULL, "scp-sys-md1-main"},
@@ -72,8 +76,6 @@ spinlock_t devapc_flag_lock;
 #define RAnd2W(a, b, c)  ccci_write32(a, b, (ccci_read32(a, b)&c))
 #define RabIsc(a, b, c) ((ccci_read32(a, b)&c) != c)
 
-static int s_md_start_completed;
-
 int ccif_read32(void *b, unsigned long a)
 {
 	unsigned long flags;
@@ -89,12 +91,11 @@ int ccif_read32(void *b, unsigned long a)
 
 void md_cldma_hw_reset(unsigned char md_id)
 {
-
 }
 
 void md1_subsys_debug_dump(enum subsys_id sys)
 {
-	struct ccci_modem *md = NULL;
+	struct ccci_modem *md;
 
 	if (sys != SYS_MD1)
 		return;
@@ -117,6 +118,7 @@ struct pg_callbacks md1_subsys_handle = {
 	.debug_dump = md1_subsys_debug_dump,
 };
 
+#ifdef CONFIG_MTK_DEVAPC
 /*devapc_violation_triggered*/
 static enum devapc_cb_status devapc_dump_adv_cb(uint32_t vio_addr)
 {
@@ -149,16 +151,19 @@ static struct devapc_vio_callbacks devapc_test_handle = {
 	.id = INFRA_SUBSYS_MD,
 	.debug_dump_adv = devapc_dump_adv_cb,
 };
+#endif
 
 void ccci_md_devapc_register_cb(void)
 {
 	/*register handle function*/
+#ifdef CONFIG_MTK_DEVAPC
 	register_devapc_vio_callback(&devapc_test_handle);
+#endif
 }
 
 void ccci_md_dump_in_interrupt(char *user_info)
 {
-	struct ccci_modem *md = NULL;
+	struct ccci_modem *md;
 
 	CCCI_NORMAL_LOG(0, TAG, "%s called by %s\n", __func__, user_info);
 	md = ccci_md_get_modem_by_id(0);
@@ -175,13 +180,7 @@ EXPORT_SYMBOL(ccci_md_dump_in_interrupt);
 
 void ccci_md_debug_dump(char *user_info)
 {
-	struct ccci_modem *md = NULL;
-
-	if (!s_md_start_completed) {
-		CCCI_ERROR_LOG(0, TAG,
-			"[%s] error: md start no call.\n", __func__);
-		return;
-	}
+	struct ccci_modem *md;
 
 	CCCI_NORMAL_LOG(0, TAG, "%s called by %s\n", __func__, user_info);
 	md = ccci_md_get_modem_by_id(0);
@@ -292,7 +291,6 @@ int md_cd_get_modem_hw_info(struct platform_device *dev_ptr,
 				return -1;
 			}
 		}
-		/* for ccif5 */
 		node = of_find_compatible_node(NULL, NULL,
 			"mediatek,md_ccif5");
 		if (node) {
@@ -304,19 +302,6 @@ int md_cd_get_modem_hw_info(struct platform_device *dev_ptr,
 				return -1;
 			}
 		}
-
-		node = of_find_compatible_node(NULL, NULL,
-					"mediatek,topckgen");
-		if (node)
-			hw_info->ap_topclkgen_base = of_iomap(node, 0);
-
-		else {
-			CCCI_ERROR_LOG(-1, TAG,
-				"%s:ioremap topclkgen base address fail\n",
-				__func__);
-			return -1;
-		}
-
 		break;
 	default:
 		return -1;
@@ -364,7 +349,6 @@ int md_cd_get_modem_hw_info(struct platform_device *dev_ptr,
 		"ccif_irq0:%d,ccif_irq1:%d,md_wdt_irq:%d\n",
 		hw_info->ap_ccif_irq0_id, hw_info->ap_ccif_irq1_id,
 		hw_info->md_wdt_irq_id);
-
 	register_pg_callback(&md1_subsys_handle);
 	return 0;
 }
@@ -379,7 +363,7 @@ void ccci_set_clk_cg(struct ccci_modem *md, unsigned int on)
 
 	CCCI_NORMAL_LOG(md->index, TAG, "%s: on=%d\n", __func__, on);
 
-	/* Clean MD_PCCIF5_SW_READY and MD_PCCIF5_PWR_ON */
+	/* Clean MD_PCCIF5_SW_READY/MD_PCCIF5_PWR_ON */
 	if (!on)
 		ccif_write32(pericfg_base, 0x30C, 0x0);
 
@@ -415,8 +399,7 @@ void ccci_set_clk_cg(struct ccci_modem *md, unsigned int on)
 					0xFF); /* special use ccci_write32 */
 			}
 
-			if (strcmp(clk_table[idx].clk_name, "infra-ccif2-ap")
-				== 0)
+			if (strcmp(clk_table[idx].clk_name, "infra-ccif2-ap") == 0)
 				mdelay(100);
 
 			spin_lock_irqsave(&devapc_flag_lock, flags);
@@ -438,7 +421,7 @@ void ccci_set_clk_by_id(int idx, unsigned int on)
 {
 	int ret = 0;
 
-	if (idx >= ARRAY_SIZE(clk_table))
+	if (idx >= ARRAY_SIZE(clk_table) || idx < 0)
 		return;
 	else if (clk_table[idx].clk_ref == NULL)
 		return;
@@ -454,7 +437,7 @@ void ccci_set_clk_by_id(int idx, unsigned int on)
 
 int md_cd_io_remap_md_side_register(struct ccci_modem *md)
 {
-	struct md_pll_reg *md_reg = NULL;
+	struct md_pll_reg *md_reg;
 	struct md_sys1_info *md_info = (struct md_sys1_info *)md->private_data;
 
 	/* call internal_dump io_remap */
@@ -644,7 +627,6 @@ void md_cd_dump_debug_register(struct ccci_modem *md)
 
 	md_cd_lock_modem_clock_src(1);
 
-	/* This function needs to be cancelled temporarily for bringup*/
 	internal_md_dump_debug_register(md->index);
 
 	md_cd_lock_modem_clock_src(0);
@@ -768,8 +750,6 @@ int md_start_platform(struct ccci_modem *md)
 	int timeout = 100; /* 100 * 20ms = 2s */
 	int ret = -1;
 
-	s_md_start_completed = 1;
-
 	if ((md->per_md_data.config.setting&MD_SETTING_FIRST_BOOT) == 0)
 		return 0;
 
@@ -824,30 +804,22 @@ static int mtk_ccci_cfg_srclken_o1_on(struct ccci_modem *md)
 	return 0;
 }
 
-
-static int md_cd_topclkgen_on(struct ccci_modem *md)
-{
-	unsigned int reg_value;
-
-	reg_value = ccci_read32(md->hw_info->ap_topclkgen_base, 0);
-	reg_value &= ~((1<<8) | (1<<9));
-	ccci_write32(md->hw_info->ap_topclkgen_base, 0, reg_value);
-
-	CCCI_BOOTUP_LOG(md->index, CORE, "%s: set md1_clk_mod = 0x%x\n",
-		__func__, ccci_read32(md->hw_info->ap_topclkgen_base, 0));
-
-	return 0;
-}
-
 int md_cd_power_on(struct ccci_modem *md)
 {
 	int ret = 0;
+	unsigned int reg_value;
 
 	/* step 1: PMIC setting */
 	md1_pmic_setting_on();
 
-	/* modem topclkgen on setting */
-	md_cd_topclkgen_on(md);
+	/* step 2: MD srcclkena setting */
+	reg_value = ccci_read32(infra_ao_base, INFRA_AO_MD_SRCCLKENA);
+	reg_value &= ~(0xFF);
+	reg_value |= 0x21;
+	ccci_write32(infra_ao_base, INFRA_AO_MD_SRCCLKENA, reg_value);
+	CCCI_BOOTUP_LOG(md->index, CORE,
+		"%s: set md1_srcclkena bit(0x1000_0F0C)=0x%x\n",
+		__func__, ccci_read32(infra_ao_base, INFRA_AO_MD_SRCCLKENA));
 
 	mtk_ccci_cfg_srclken_o1_on(md);
 	/* steip 3: power on MD_INFRA and MODEM_TOP */
@@ -898,23 +870,10 @@ int md_cd_let_md_go(struct ccci_modem *md)
 	return 0;
 }
 
-static int md_cd_topclkgen_off(struct ccci_modem *md)
-{
-	unsigned int reg_value;
-
-	reg_value = ccci_read32(md->hw_info->ap_topclkgen_base, 0);
-	reg_value |= ((1<<8) | (1<<9));
-	ccci_write32(md->hw_info->ap_topclkgen_base, 0, reg_value);
-
-	CCCI_BOOTUP_LOG(md->index, CORE, "%s: set md1_clk_mod = 0x%x\n",
-		__func__, ccci_read32(md->hw_info->ap_topclkgen_base, 0));
-
-	return 0;
-}
-
 int md_cd_power_off(struct ccci_modem *md, unsigned int timeout)
 {
 	int ret = 0;
+	unsigned int reg_value;
 
 #ifdef FEATURE_INFORM_NFC_VSIM_CHANGE
 	/* notify NFC */
@@ -927,13 +886,17 @@ int md_cd_power_off(struct ccci_modem *md, unsigned int timeout)
 		/* 1. power off MD MTCMOS */
 		clk_disable_unprepare(clk_table[0].clk_ref);
 		/* 2. disable srcclkena */
+		CCCI_BOOTUP_LOG(md->index, TAG, "disable md1 clk\n");
+		reg_value = ccci_read32(infra_ao_base, INFRA_AO_MD_SRCCLKENA);
+		reg_value &= ~(0xFF);
+		ccci_write32(infra_ao_base, INFRA_AO_MD_SRCCLKENA, reg_value);
+		CCCI_BOOTUP_LOG(md->index, CORE,
+			"%s: set md1_srcclkena=0x%x\n", __func__,
+			ccci_read32(infra_ao_base, INFRA_AO_MD_SRCCLKENA));
 		CCCI_BOOTUP_LOG(md->index, TAG, "Call md1_pmic_setting_off\n");
 #ifdef FEATURE_CLK_BUF
 		flight_mode_set_by_atf(md, true);
 #endif
-		/* modem topclkgen off setting */
-		md_cd_topclkgen_off(md);
-
 		/* 3. PMIC off */
 		md1_pmic_setting_off();
 
@@ -1048,4 +1011,14 @@ void ccci_modem_sysresume(void)
 	md = ccci_md_get_modem_by_id(0);
 	if (md != NULL)
 		ccci_modem_restore_reg(md);
+}
+
+int ccci_modem_suspend_noirq(struct device *dev)
+{
+	return dpmaif_suspend_noirq(dev);
+}
+
+int ccci_modem_resume_noirq(struct device *dev)
+{
+	return dpmaif_resume_noirq(dev);
 }
