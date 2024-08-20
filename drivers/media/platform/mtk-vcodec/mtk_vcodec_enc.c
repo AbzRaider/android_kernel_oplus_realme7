@@ -697,9 +697,6 @@ static int vidioc_venc_g_parm(struct file *file, void *priv,
 static struct mtk_q_data *mtk_venc_get_q_data(struct mtk_vcodec_ctx *ctx,
 					      enum v4l2_buf_type type)
 {
-	if (ctx == NULL)
-		return NULL;
-
 	if (V4L2_TYPE_IS_OUTPUT(type))
 		return &ctx->q_data[MTK_Q_DATA_SRC];
 
@@ -1659,23 +1656,14 @@ static int vb2ops_venc_queue_setup(struct vb2_queue *vq,
 				   unsigned int sizes[],
 				   struct device *alloc_devs[])
 {
-	struct mtk_vcodec_ctx *ctx;
+	struct mtk_vcodec_ctx *ctx = vb2_get_drv_priv(vq);
 	struct mtk_q_data *q_data;
 	unsigned int i;
 
-	if (IS_ERR_OR_NULL(vq) || IS_ERR_OR_NULL(nbuffers) ||
-	    IS_ERR_OR_NULL(nplanes) || IS_ERR_OR_NULL(alloc_devs)) {
-		mtk_v4l2_err("vq %p, nbuffers %p, nplanes %p, alloc_devs %p",
-			vq, nbuffers, nplanes, alloc_devs);
-		return -EINVAL;
-	}
-
-	ctx = vb2_get_drv_priv(vq);
 	q_data = mtk_venc_get_q_data(ctx, vq->type);
-	if (q_data == NULL || (*nplanes) > MTK_VCODEC_MAX_PLANES) {
-		mtk_v4l2_err("vq->type=%d nplanes %d err", vq->type, *nplanes);
+
+	if (q_data == NULL)
 		return -EINVAL;
-	}
 
 	if (*nplanes) {
 		for (i = 0; i < *nplanes; i++)
@@ -2601,10 +2589,6 @@ static void mtk_venc_worker(struct work_struct *work)
 
 	v4l2_m2m_job_finish(ctx->dev->m2m_dev_enc, ctx->m2m_ctx);
 
-	mtk_v4l2_debug(1, "<=== src_buf[%d] dst_buf[%d] venc_if_encode ret=%d Size=%u===>",
-			src_buf->index, dst_buf->index, ret,
-			enc_result.bs_size);
-
 	mutex_unlock(&ctx->worker_lock);
 }
 
@@ -2795,11 +2779,11 @@ int mtk_vcodec_enc_ctrls_setup(struct mtk_vcodec_ctx *ctx)
 		V4L2_MPEG_VIDEO_MPEG4_PROFILE_SIMPLE,
 		0, V4L2_MPEG_VIDEO_MPEG4_PROFILE_SIMPLE);
 	v4l2_ctrl_new_std_menu(handler, ops, V4L2_CID_MPEG_VIDEO_H264_LEVEL,
-		V4L2_MPEG_VIDEO_H264_LEVEL_4_2,
+		V4L2_MPEG_VIDEO_H264_LEVEL_5_1,
 		0, V4L2_MPEG_VIDEO_H264_LEVEL_1_0);
 	v4l2_ctrl_new_std_menu(handler, ops,
 		V4L2_CID_MPEG_VIDEO_HEVC_LEVEL,
-		V4L2_MPEG_VIDEO_HEVC_LEVEL_4,
+		V4L2_MPEG_VIDEO_HEVC_LEVEL_5_1,
 		0, V4L2_MPEG_VIDEO_HEVC_LEVEL_4);
 	v4l2_ctrl_new_std_menu(handler, ops,
 		V4L2_CID_MPEG_VIDEO_HEVC_TIER,
