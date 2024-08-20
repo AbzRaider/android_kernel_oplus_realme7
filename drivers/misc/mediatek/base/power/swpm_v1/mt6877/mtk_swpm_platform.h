@@ -23,7 +23,7 @@
 #define GET_UW_LKG                              (1)
 #define MAX_RECORD_CNT				(64)
 #define MAX_APHY_CORE_PWR			(12)
-#define MAX_APHY_OTHERS_PWR			(11)
+#define MAX_APHY_OTHERS_PWR			(16)
 #define DEFAULT_LOG_INTERVAL_MS			(1000)
 /* VPROC2 + VPROC1 + VDRAM + VGPU + VCORE */
 #define DEFAULT_LOG_MASK			(0x1F)
@@ -31,7 +31,7 @@
 #define POWER_CHAR_SIZE				(256)
 #define POWER_INDEX_CHAR_SIZE			(4096)
 
-#define NR_CORE_VOLT				(4)
+#define NR_CORE_VOLT				(5)
 #define NR_CPU_OPP				(16)
 #define NR_CPU_CORE				(8)
 #define NR_CPU_L_CORE				(6)
@@ -67,8 +67,8 @@ enum power_rail {
 	VGPU,
 	VCORE,
 	VDRAM,
-	VDD12_DRAM,
-	VDD18_DRAM,
+	VIO18_DDR,
+	VIO18_DRAM,
 
 	NR_POWER_RAIL
 };
@@ -78,9 +78,10 @@ enum ddr_freq {
 	DDR_600,
 	DDR_800,
 	DDR_933,
-	DDR_1200,
-	DDR_1600,
+	DDR_1333,
+	DDR_1866,
 	DDR_2133,
+	DDR_2750,
 
 	NR_DDR_FREQ
 };
@@ -95,7 +96,7 @@ enum aphy_other_pwr_type {
 	APHY_VDDQ_0P6V,
 	APHY_VM_0P75V,
 	APHY_VIO_1P2V,
-	/* APHY_VIO_1P8V, power can be ignore */
+	/* APHY_VIO_1P8V, */
 
 	NR_APHY_OTHERS_PWR_TYPE
 };
@@ -186,6 +187,7 @@ struct cpu_swpm_index {
 	unsigned int cpu_emi_bw;
 	struct cpu_swpm_vf_index vf;
 	unsigned int cpu_lkg[NR_CPU_LKG_TYPE];
+	unsigned int thermal[NR_CPU_LKG_TYPE];
 	unsigned int cpu_pwr[NR_CPU_PWR_TYPE];
 };
 
@@ -200,28 +202,32 @@ enum infra_power_state {
 };
 
 enum core_lkg_type {
-	CORE_LKG_INFRA,
-	CORE_LKG_AUDIO,
-	CORE_LKG_PERI,
-	CORE_LKG_HIFI3,
-	CORE_LKG_DISP,
-	CORE_LKG_CAMSYS,
-	CORE_LKG_IMGSYS,
-	CORE_LKG_IPESYS,
+	CORE_LKG_SOC_ON,
+	CORE_LKG_INFRA_TOP,
+	CORE_LKG_DRAMC,
+	CORE_LKG_MMSYS,
 	CORE_LKG_VDEC,
 	CORE_LKG_VENC,
-	CORE_LKG_DRAMC,
-	CORE_LKG_TOP,
+	CORE_LKG_IMGSYS,
+	CORE_LKG_CAMSYS,
+	CORE_LKG_CONNSYS,
+	CORE_LKG_IPESYS,
+
 	NR_CORE_LKG_TYPE
 };
 
 enum core_lkg_rec_type {
-	CORE_LKG_REC_INFRA,
+	CORE_LKG_REC_SOC_ON,
+	CORE_LKG_REC_INFRA_TOP,
 	CORE_LKG_REC_DRAMC,
+	CORE_LKG_REC_MMSYS,
+	CORE_LKG_REC_VDEC,
+	CORE_LKG_REC_VENC,
+
 	NR_CORE_LKG_REC_TYPE
 };
 
-/* sync with mt6873 emi in sspm */
+/* sync with mt6885 emi in sspm */
 #define MAX_EMI_NUM (1)
 /* core voltage/freq index */
 struct core_swpm_vf_index {
@@ -256,6 +262,9 @@ struct mem_swpm_index {
 	unsigned int pdir_pct[MAX_EMI_NUM];	/* power-down idle rate */
 	unsigned int phr_pct[MAX_EMI_NUM];	/* page-hit rate */
 	unsigned int acc_util[MAX_EMI_NUM];	/* accumulate EMI utilization */
+	unsigned int trans[MAX_EMI_NUM];	/* transaction count */
+	unsigned int ddr_ratio[MAX_EMI_NUM];	/* ddr_ratio */
+	unsigned int index_in_us;		/* data collection in us */
 	unsigned int mr4;
 	struct mem_swpm_vf_index vf;
 };
@@ -278,6 +287,8 @@ struct share_ctrl {
 struct share_wrap {
 	unsigned int share_index_addr;
 	unsigned int share_ctrl_addr;
+	unsigned int share_index_ext_addr;
+	unsigned int share_ctrl_ext_addr;
 };
 
 struct aphy_core_bw_data {
@@ -288,6 +299,7 @@ struct aphy_core_pwr {
 	unsigned short read_coef[MAX_APHY_CORE_PWR];
 	unsigned short write_coef[MAX_APHY_CORE_PWR];
 };
+
 
 struct aphy_others_bw_data {
 	unsigned short bw[MAX_APHY_OTHERS_PWR];
@@ -321,18 +333,18 @@ struct dram_pwr_conf {
 };
 
 /* numbers of unsigned int for mem reserved memory */
-#define MEM_SWPM_RESERVED_SIZE (305)
+#define MEM_SWPM_RESERVED_SIZE (500)
 
-/* mem share memory data structure - 1218/1220 bytes */
+/* mem share memory data structure - 1940/2000 bytes */
 struct mem_swpm_rec_data {
-	/* 2(short) * 7(ddr_opp) = 14 bytes */
+	/* 2(short) * 8(ddr_opp) = 16 bytes */
 	unsigned short ddr_opp_freq[NR_DDR_FREQ];
 
-	/* 2(short) * 11(sample point) * 7(opp_num) = 154 bytes */
+	/* 2(short) * 16(sample point) * 8(opp_num) = 256 bytes */
 	struct aphy_others_bw_data aphy_others_bw_tbl[NR_DDR_FREQ];
 
 	/* 2(short) * 3(pwr_type) */
-	/* * ((11+11)(r/w_coef) * 7(opp) + 7(idle)) = 966 bytes */
+	/* * ((16+16)(r/w_coef) * 8(opp) + 8(idle)) = 1584 bytes */
 	struct aphy_others_pwr_data
 		aphy_others_pwr_tbl[NR_APHY_OTHERS_PWR_TYPE];
 
@@ -341,22 +353,22 @@ struct mem_swpm_rec_data {
 };
 
 /* numbers of unsigned int for core reserved memory */
-#define CORE_SWPM_RESERVED_SIZE (185)
+#define CORE_SWPM_RESERVED_SIZE (208)
 
-/* core share memory data structure - 722/740 bytes */
+/* core share memory data structure - 826/832 bytes */
 struct core_swpm_rec_data {
-	/* 2(short) * 4(core_volt) = 8 bytes */
+	/* 2(short) * 5(core_volt) = 10 bytes */
 	unsigned short core_volt_tbl[NR_CORE_VOLT];
 
-	/* 2(short) * 12(sample point) * 7(opp_num) = 168 bytes */
+	/* 2(short) * 12(sample point) * 8(opp_num) = 192 bytes */
 	struct aphy_core_bw_data aphy_core_bw_tbl[NR_DDR_FREQ];
 
 	/* 2(short) * 1(pwr_type) */
-	/* * ((12+12)(r/w_coef) * 7(opp) + 7(idle)) = 350 bytes */
+	/* * ((12+12)(r/w_coef) * 8(opp) + 8(idle)) = 400 bytes */
 	struct aphy_core_pwr_data
 		aphy_core_pwr_tbl[NR_APHY_CORE_PWR_TYPE];
 
-	/* 4(int) * 4(core_volt) * 12(core_lkg_type) = 192 bytes */
+	/* 4 (int) * 5(core_volt) * 11(core_lkg_type) = 220 bytes */
 	unsigned int core_lkg_pwr[NR_CORE_VOLT][NR_CORE_LKG_TYPE];
 
 	/* 4 (int) * 1 = 4 bytes */
@@ -376,13 +388,16 @@ struct swpm_rec_data {
 	/* 4(int) * 64(rec_cnt) * 7 = 1792 bytes */
 	unsigned int pwr[NR_POWER_RAIL][MAX_RECORD_CNT];
 
+	/* 4(int) * 3(lkg_type) = 12 bytes */
+	unsigned int cpu_temp[NR_CPU_LKG_TYPE];
+
 	/* 4(int) * 3(lkg_type) * 16 = 192 bytes */
 	unsigned int cpu_lkg_pwr[NR_CPU_LKG_TYPE][NR_CPU_OPP];
 
-	/* 1183/1200 bytes */
+	/* 1940/2000 bytes */
 	unsigned int mem_reserved[MEM_SWPM_RESERVED_SIZE];
 
-	/* 722/740 bytes */
+	/* 828/832 bytes */
 	unsigned int core_reserved[CORE_SWPM_RESERVED_SIZE];
 
 	/* 4(int) * 15 = 60 bytes */
@@ -393,8 +408,8 @@ struct swpm_rec_data {
 
 	/* 4(int) * 11 = 44 bytes */
 	unsigned int me_reserved[ME_SWPM_RESERVED_SIZE];
-	/* remaining size = 944 bytes */
-};
+	/* remaining size = 60/6144 bytes */
+} __aligned(8);
 
 extern struct swpm_rec_data *swpm_info_ref;
 
