@@ -38,13 +38,20 @@ struct GPIO_PINCTRL gpio_pinctrl_list_switch[
 };
 #endif
 
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+/*Henry.Chang@Cam.Drv, 20200727, add for 20131*/
+struct GPIO_PINCTRL gpio_pinctrl_list_ldo_enable[1] = {
+	{"fan53870_chip_enable"}
+};
+#endif
+
 static struct GPIO gpio_instance;
 
 static enum IMGSENSOR_RETURN gpio_init(
 	void *pinstance,
 	struct IMGSENSOR_HW_DEVICE_COMMON *pcommon)
 {
-	int    i, j;
+	int    i, j, result = 0;
 	struct GPIO            *pgpio            = (struct GPIO *)pinstance;
 	enum   IMGSENSOR_RETURN ret              = IMGSENSOR_RETURN_SUCCESS;
 	char str_pinctrl_name[LENGTH_FOR_SNPRINTF];
@@ -67,11 +74,13 @@ static enum IMGSENSOR_RETURN gpio_init(
 			gpio_pinctrl_list_cam[i].ppinctrl_lookup_names;
 
 			if (lookup_names) {
-				snprintf(str_pinctrl_name,
+				result = snprintf(str_pinctrl_name,
 				sizeof(str_pinctrl_name),
 				"cam%d_%s",
 				j,
 				lookup_names);
+				if (result < 0)
+					pr_info("%s : snprintf error !\n", __func__);
 				pgpio->ppinctrl_state_cam[j][i] =
 					pinctrl_lookup_state(
 						pgpio->ppinctrl,
@@ -88,6 +97,23 @@ static enum IMGSENSOR_RETURN gpio_init(
 			}
 		}
 	}
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+//Henry.Chang@Cam.Drv, 20200727, add for 20131
+	#ifdef SENSOR_PLATFORM_4G_20682
+	if (is_project(20730) || is_project(20731) || is_project(20732)) {
+		if (gpio_pinctrl_list_ldo_enable[0].ppinctrl_lookup_names) {
+			pgpio->pinctrl_state_ldo_enable = pinctrl_lookup_state(
+				pgpio->ppinctrl,
+				gpio_pinctrl_list_ldo_enable[0].ppinctrl_lookup_names);
+		}
+		if (pgpio->pinctrl_state_ldo_enable == NULL) {
+			PK_PR_ERR("%s : pinctrl err, %s\n", __func__,
+				gpio_pinctrl_list_ldo_enable[0].ppinctrl_lookup_names);
+			ret = IMGSENSOR_RETURN_ERROR;
+		}
+	}
+	#endif
+#endif
 #ifdef MIPI_SWITCH
 	for (i = 0; i < GPIO_CTRL_STATE_MAX_NUM_SWITCH; i++) {
 		if (gpio_pinctrl_list_switch[i].ppinctrl_lookup_names) {
@@ -150,13 +176,26 @@ static enum IMGSENSOR_RETURN gpio_set(
 	else
 #endif
 	{
-		ppinctrl_state =
-			pgpio->ppinctrl_state_cam[(unsigned int)sensor_idx][
-			((pin - IMGSENSOR_HW_PIN_PDN) << 1) + gpio_state];
+		#ifdef OPLUS_FEATURE_CAMERA_COMMON
+		//Henry.Chang@Cam.Drv, 20200727, add for 20131
+			#ifdef SENSOR_PLATFORM_4G_20682
+			//if ((pin == IMGSENSOR_HW_PIN_FAN53870_ENABLE) && is_project(OPPO_19040)) {
+			if (pin == IMGSENSOR_HW_PIN_FAN53870_ENABLE) {
+				ppinctrl_state = pgpio->pinctrl_state_ldo_enable;
+			} else {
+				ppinctrl_state =
+					pgpio->ppinctrl_state_cam[sensor_idx][
+					((pin - IMGSENSOR_HW_PIN_PDN) << 1) + gpio_state];
+			}
+			#else
+			ppinctrl_state =
+				pgpio->ppinctrl_state_cam[sensor_idx][
+				((pin - IMGSENSOR_HW_PIN_PDN) << 1) + gpio_state];
+			#endif
+		#endif
 	}
 
 	mutex_lock(pgpio->pgpio_mutex);
-
 	if (ppinctrl_state != NULL && !IS_ERR(ppinctrl_state))
 		pinctrl_select_state(pgpio->ppinctrl, ppinctrl_state);
 	else

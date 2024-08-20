@@ -21,6 +21,7 @@
 #include <linux/workqueue.h>
 #include <linux/init.h>
 #include <linux/types.h>
+#include <soc/oplus/system/oplus_project.h>
 
 #undef CONFIG_MTK_SMI_EXT
 #ifdef CONFIG_MTK_SMI_EXT
@@ -54,7 +55,6 @@
 #include "imgsensor_proc.h"
 #include "imgsensor_clk.h"
 #include "imgsensor.h"
-
 #define PDAF_DATA_SIZE 4096
 
 #ifdef CONFIG_MTK_SMI_EXT
@@ -67,6 +67,10 @@ static int current_mmsys_clk = MMSYS_CLK_MEDIUM;
 #ifdef CONFIG_CAM_TEMPERATURE_WORKQUEUE
 static void cam_temperature_report_wq_routine(struct work_struct *);
 	struct delayed_work cam_temperature_wq;
+#endif
+
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+extern void oplus_chg_set_camera_status(bool val);
 #endif
 
 #define FEATURE_CONTROL_MAX_DATA_SIZE 128000
@@ -509,9 +513,25 @@ int imgsensor_set_driver(struct IMGSENSOR_SENSOR *psensor)
 	char *driver_name = NULL;
 
 	imgsensor_mutex_init(psensor_inst);
+	#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	if (is_project(20761) || is_project(20762) || is_project(20764) || is_project(20766) || is_project(20767)) {
+		imgsensor_i2c_init(&psensor_inst->i2c_cfg,
+			imgsensor_custom_config_even[(unsigned int)psensor->inst.sensor_idx].i2c_dev);
+	} else if (is_project(0x2167A) || is_project(0x2167B) || is_project(0x2167C) || is_project(0x2167D)) {
+        imgsensor_i2c_init(&psensor_inst->i2c_cfg,
+            imgsensor_custom_config_even[(unsigned int)psensor->inst.sensor_idx].i2c_dev);
+	} else if (is_project(0x216AF) || is_project(0x216B0) || is_project(0x216B1)) {
+        imgsensor_i2c_init(&psensor_inst->i2c_cfg,
+            imgsensor_custom_config_even[(unsigned int)psensor->inst.sensor_idx].i2c_dev);
+	} else {
+		imgsensor_i2c_init(&psensor_inst->i2c_cfg,
+			imgsensor_custom_config[(unsigned int)psensor->inst.sensor_idx].i2c_dev);
+	}
+	#else
 	imgsensor_i2c_init(&psensor_inst->i2c_cfg,
-	imgsensor_custom_config[
+		imgsensor_custom_config[
 	(unsigned int)psensor->inst.sensor_idx].i2c_dev);
+	#endif /* OPLUS_FEATURE_CAMERA_COMMON */
 
 	imgsensor_i2c_filter_msg(&psensor_inst->i2c_cfg, true);
 
@@ -1457,6 +1477,12 @@ static inline int adopt_CAMERA_HW_FeatureControl(void *pBuf)
 		pFeaturePara_64 =
 		    (unsigned long long *)pFeaturePara;
 
+		if (FeatureParaLen < 2 * sizeof(unsigned long long)) {
+			pr_debug("FeatureParaLen is too small %d\n", FeatureParaLen);
+			kfree(pFeaturePara);
+			return -EINVAL;
+		}
+
 		pValue = kmalloc(sizeof(MUINT32), GFP_KERNEL);
 		if (pValue == NULL) {
 			kfree(pFeaturePara);
@@ -1510,6 +1536,12 @@ static inline int adopt_CAMERA_HW_FeatureControl(void *pBuf)
 		pFeaturePara_64 =
 		    (unsigned long long *)pFeaturePara;
 
+		if (FeatureParaLen < 2 * sizeof(unsigned long long)) {
+			pr_debug("FeatureParaLen is too small %d\n", FeatureParaLen);
+			kfree(pFeaturePara);
+			return -EINVAL;
+		}
+
 		pValue0 = kmalloc(sizeof(MUINT32), GFP_KERNEL);
 		pValue1 = kmalloc(sizeof(MUINT32), GFP_KERNEL);
 
@@ -1545,6 +1577,12 @@ static inline int adopt_CAMERA_HW_FeatureControl(void *pBuf)
 		    (unsigned long long *)pFeaturePara;
 
 		usr_ptr = (void *)(uintptr_t)(*(pFeaturePara_64));
+
+		if (FeatureParaLen < 1 * sizeof(unsigned long long)) {
+			pr_debug("FeatureParaLen is too small %d\n", FeatureParaLen);
+			kfree(pFeaturePara);
+			return -EINVAL;
+		}
 
 		pAeAwbRef = kmalloc(
 		    sizeof(struct SENSOR_AE_AWB_REF_STRUCT),
@@ -1587,6 +1625,12 @@ static inline int adopt_CAMERA_HW_FeatureControl(void *pBuf)
 
 		usr_ptr = (void *)(uintptr_t) (*(pFeaturePara_64 + 1));
 
+		if (FeatureParaLen < 2 * sizeof(unsigned long long)) {
+			pr_debug("FeatureParaLen is too small %d\n", FeatureParaLen);
+			kfree(pFeaturePara);
+			return -EINVAL;
+		}
+
 		pCrop = kmalloc(
 		    sizeof(struct SENSOR_WINSIZE_INFO_STRUCT),
 		    GFP_KERNEL);
@@ -1625,6 +1669,12 @@ static inline int adopt_CAMERA_HW_FeatureControl(void *pBuf)
 
 		usr_ptr = (void *)(uintptr_t) (*(pFeaturePara_64 + 1));
 
+		if (FeatureParaLen < 2 * sizeof(unsigned long long)) {
+			pr_debug("FeatureParaLen is too small %d\n", FeatureParaLen);
+			kfree(pFeaturePara);
+			return -EINVAL;
+		}
+
 		pVcInfo = kmalloc(
 		    sizeof(struct SENSOR_VC_INFO_STRUCT),
 		    GFP_KERNEL);
@@ -1661,6 +1711,12 @@ static inline int adopt_CAMERA_HW_FeatureControl(void *pBuf)
 		    (unsigned long long *)pFeaturePara;
 
 		usr_ptr = (void *)(uintptr_t) (*(pFeaturePara_64 + 1));
+
+		if (FeatureParaLen < 2 * sizeof(unsigned long long)) {
+			pr_debug("FeatureParaLen is too small %d\n", FeatureParaLen);
+			kfree(pFeaturePara);
+			return -EINVAL;
+		}
 
 		pPdInfo = kmalloc(
 		    sizeof(struct SET_PD_BLOCK_INFO_T),
@@ -1700,6 +1756,12 @@ static inline int adopt_CAMERA_HW_FeatureControl(void *pBuf)
 		u4RegLen = (*pFeaturePara_64);
 		usr_ptr_Reg =
 		    (void *)(uintptr_t) (*(pFeaturePara_64 + 1));
+
+		if (FeatureParaLen < 2 * sizeof(unsigned long long)) {
+			pr_debug("FeatureParaLen is too small %d\n", FeatureParaLen);
+			kfree(pFeaturePara);
+			return -EINVAL;
+		}
 
 		if (u4RegLen > PDAF_DATA_SIZE) {
 			kfree(pFeaturePara);
@@ -1782,6 +1844,12 @@ static inline int adopt_CAMERA_HW_FeatureControl(void *pBuf)
 
 		usr_ptr =  (void *)(uintptr_t) (*(pFeaturePara_64));
 
+		if (FeatureParaLen < 1 * sizeof(unsigned long long)) {
+			pr_debug("FeatureParaLen is too small %d\n", FeatureParaLen);
+			kfree(pFeaturePara);
+			return -EINVAL;
+		}
+
 		pExif = kmalloc(
 		    sizeof(struct SENSOR_EXIF_INFO_STRUCT),
 		    GFP_KERNEL);
@@ -1819,6 +1887,12 @@ static inline int adopt_CAMERA_HW_FeatureControl(void *pBuf)
 		    (unsigned long long *)pFeaturePara;
 
 		usr_ptr = (void *)(uintptr_t) (*(pFeaturePara_64));
+
+		if (FeatureParaLen < 1 * sizeof(unsigned long long)) {
+			pr_debug("FeatureParaLen is too small %d\n", FeatureParaLen);
+			kfree(pFeaturePara);
+			return -EINVAL;
+		}
 
 		pCurAEAWB = kmalloc(
 		    sizeof(struct SENSOR_AE_AWB_CUR_STRUCT),
@@ -1863,6 +1937,12 @@ static inline int adopt_CAMERA_HW_FeatureControl(void *pBuf)
 
 		usr_ptr = (void *)(uintptr_t) (*(pFeaturePara_64));
 
+		if (FeatureParaLen < 1 * sizeof(unsigned long long)) {
+			pr_debug("FeatureParaLen is too small %d\n", FeatureParaLen);
+			kfree(pFeaturePara);
+			return -EINVAL;
+		}
+
 		pDelayInfo = kmalloc(
 		    sizeof(struct SENSOR_DELAY_INFO_STRUCT),
 		    GFP_KERNEL);
@@ -1905,6 +1985,12 @@ static inline int adopt_CAMERA_HW_FeatureControl(void *pBuf)
 
 		usr_ptr = (void *)(uintptr_t) (*(pFeaturePara_64));
 
+		if (FeatureParaLen < 1 * sizeof(unsigned long long)) {
+			pr_debug("FeatureParaLen is too small %d\n", FeatureParaLen);
+			kfree(pFeaturePara);
+			return -EINVAL;
+		}
+
 		pFlashInfo = kmalloc(
 		    sizeof(struct SENSOR_FLASHLIGHT_AE_INFO_STRUCT),
 		    GFP_KERNEL);
@@ -1946,6 +2032,12 @@ static inline int adopt_CAMERA_HW_FeatureControl(void *pBuf)
 		    (unsigned long long *) pFeaturePara;
 		usr_ptr = (void *)(uintptr_t)(*(pFeaturePara_64 + 1));
 		buf_size = (kal_uint32) (*(pFeaturePara_64 + 2));
+
+		if (FeatureParaLen < 3 * sizeof(unsigned long long)) {
+			pr_debug("FeatureParaLen is too small %d\n", FeatureParaLen);
+			kfree(pFeaturePara);
+			return -EINVAL;
+		}
 
 		if (buf_size > PDAF_DATA_SIZE) {
 			kfree(pFeaturePara);
@@ -2574,7 +2666,6 @@ static long imgsensor_ioctl(
 	default:
 		pr_debug("No such command %d\n", a_u4Command);
 		i4RetValue = -EPERM;
-		kfree(pBuff);
 		goto CAMERA_HW_Ioctl_EXIT;
 		break;
 	}
@@ -2590,8 +2681,11 @@ static long imgsensor_ioctl(
 		i4RetValue =  -EFAULT;
 		goto CAMERA_HW_Ioctl_EXIT;
 	}
-	kfree(pBuff);
 CAMERA_HW_Ioctl_EXIT:
+	if (pBuff != NULL) {
+		kfree(pBuff);
+		pBuff = NULL;
+	}
 	return i4RetValue;
 }
 
@@ -2603,6 +2697,11 @@ static int imgsensor_open(struct inode *a_pstInode, struct file *a_pstFile)
 		imgsensor_clk_enable_all(&pgimgsensor->clk);
 
 	atomic_inc(&pgimgsensor->imgsensor_open_cnt);
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	if(atomic_read(&pgimgsensor->imgsensor_open_cnt) > 0) {
+		oplus_chg_set_camera_status(true);
+	}
+#endif
 	pr_info(
 	    "%s %d\n",
 	    __func__,
@@ -2633,6 +2732,13 @@ static int imgsensor_release(struct inode *a_pstInode, struct file *a_pstFile)
 		imgsensor_dfs_ctrl(DFS_RELEASE, NULL);
 #endif
 	}
+
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	if(atomic_read(&pgimgsensor->imgsensor_open_cnt) == 0) {
+		oplus_chg_set_camera_status(false);
+	}
+#endif
+
 	pr_info(
 	    "%s %d\n",
 	    __func__,
