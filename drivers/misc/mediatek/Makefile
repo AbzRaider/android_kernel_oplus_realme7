@@ -16,6 +16,11 @@ export MTK_PLATFORM_NAME := $(CONFIG_MTK_PLATFORM)
 export MTK_PLATFORM := $(subst ",,$(CONFIG_MTK_PLATFORM))
 subdir-ccflags-y += -Werror
 
+#sunyunpeng@WT.CAM.DRV, 2022/03/17, Add for moss sois+eis
+ifeq ($(CONFIG_MTK_PLATFORM), "mt6853")
+subdir-ccflags-y += -DOPLUS_FEATURE_CAMERA_OIS
+endif
+
 subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/include
 subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/include/mt-plat/$(MTK_PLATFORM)/include/
 subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/include/mt-plat/
@@ -140,6 +145,7 @@ endif
 ifeq (,$(filter $(CONFIG_MTK_PLATFORM_NAME), "mt6768" "mt6785"))
 obj-y += spi_slave_drv/
 endif
+obj-$(CONFIG_MTK_MT6382_BDG) += spi_slave_drv/
 obj-$(CONFIG_MTK_FB) += video/
 obj-$(CONFIG_MTK_DYNAMIC_FPS_FRAMEWORK_SUPPORT) += dfrc/
 obj-$(CONFIG_MTK_PMIC_WRAP_HAL) += pmic_wrap/
@@ -150,6 +156,11 @@ obj-$(CONFIG_MTK_JPEG) += jpeg/
 obj-$(CONFIG_MTK_CCU) += ccu/src/
 
 obj-$(CONFIG_MTK_CQDMA) += cqdma/
+
+#ifdef ODM_HQ_EDIT
+#liyan@ODM.Multimedia.LCD  2019/08/27 add for LCD bias setting
+obj-$(CONFIG_SET_LCD_BIAS_ODM_HQ) += lcd_bias/
+#endif #ODM_HQ_EDIT
 
 ifeq ($(CONFIG_MTK_GAUGE_VERSION),30)
 obj-y += power/
@@ -187,3 +198,5 @@ obj-y += subpmic/
 obj-$(CONFIG_MTK_GATE_IC) += gate_ic/
 obj-$(CONFIG_MTK_OTP) += otp/
 obj-$(CONFIG_MTK_SDA) += sda/
+#GaoWang@Cam.Drv add for 20682 camera BringUp 20200918
+obj-$(CONFIG_CAMERA_LDO) += camera_ldo/

@@ -12,7 +12,7 @@
  */
 
 /*
- * DW9718AF voice coil motor driver
+ * BU64253AF voice coil motor driver
  *
  *
  */
@@ -24,7 +24,7 @@
 
 #include "lens_info.h"
 
-#define AF_DRVNAME "DW9718AF_DRV"
+#define AF_DRVNAME "BU64253AF_DRV"
 #define AF_I2C_SLAVE_ADDR 0x18
 
 #define AF_DEBUG
@@ -35,6 +35,9 @@
 #define LOG_INF(format, args...)
 #endif
 
+/* if use ISRC mode, should modify variables in init_setting */
+#define USE_ISRC_MODE_IMX386_SENSOR
+
 static struct i2c_client *g_pstAF_I2Cclient;
 static int *g_pAF_Opened;
 static spinlock_t *g_pAF_SpinLock;
@@ -44,39 +47,23 @@ static unsigned long g_u4AF_MACRO = 1023;
 static unsigned long g_u4CurrPosition;
 
 #if 0
-static int i2c_read(u8 a_u2Addr, u8 *a_puBuff)
+static int s4AF_ReadReg(unsigned short *a_pu2Result)
 {
 	int i4RetValue = 0;
-	char puReadCmd[1] = {(char)(a_u2Addr)};
+	char pBuff[2];
 
-	i4RetValue = i2c_master_send(g_pstAF_I2Cclient, puReadCmd, 1);
+	g_pstAF_I2Cclient->addr = AF_I2C_SLAVE_ADDR;
+
+	g_pstAF_I2Cclient->addr = g_pstAF_I2Cclient->addr >> 1;
+
+	i4RetValue = i2c_master_recv(g_pstAF_I2Cclient, pBuff, 2);
+
 	if (i4RetValue < 0) {
-		LOG_INF(" I2C write failed!!\n");
+		LOG_INF("I2C read - send failed!!\n");
 		return -1;
 	}
 
-	i4RetValue = i2c_master_recv(g_pstAF_I2Cclient, (char *)a_puBuff, 1);
-	if (i4RetValue < 0) {
-		LOG_INF(" I2C read failed!!\n");
-		return -1;
-	}
-
-	return 0;
-}
-
-
-static u8 read_data(u8 addr)
-{
-	u8 get_byte = 0xFF;
-
-	i2c_read(addr, &get_byte);
-
-	return get_byte;
-}
-
-static int s4DW9718AF_ReadReg(unsigned short *a_pu2Result)
-{
-	*a_pu2Result = (read_data(0x02) << 8) + (read_data(0x03) & 0xff);
+	*a_pu2Result = (((u16)pBuff[0]) << 2) + (pBuff[1]);
 
 	return 0;
 }
@@ -86,17 +73,17 @@ static int s4AF_WriteReg(u16 a_u2Data)
 {
 	int i4RetValue = 0;
 
-	char puSendCmd[3] = {0x02, (char)(a_u2Data >> 8),
+	char puSendCmd[2] = {(char)(((a_u2Data >> 8) & 0x03) | 0xC4),
 			     (char)(a_u2Data & 0xFF)};
 
 	g_pstAF_I2Cclient->addr = AF_I2C_SLAVE_ADDR;
 
 	g_pstAF_I2Cclient->addr = g_pstAF_I2Cclient->addr >> 1;
 
-	i4RetValue = i2c_master_send(g_pstAF_I2Cclient, puSendCmd, 3);
+	i4RetValue = i2c_master_send(g_pstAF_I2Cclient, puSendCmd, 2);
 
 	if (i4RetValue < 0) {
-		LOG_INF("I2C send failed!!\n");
+		LOG_INF("I2C write failed!!\n");
 		return -1;
 	}
 
@@ -133,33 +120,22 @@ static int initAF(void)
 
 	if (*g_pAF_Opened == 1) {
 
-		int i4RetValue = 0;
-		char puSendCmd[2] = {0x00, 0x00}; /* soft power on */
-		char puSendCmd2[2] = {0x01, 0x39};
-		char puSendCmd3[2] = {0x05, 0x65};
+#ifdef USE_ISRC_MODE_IMX386_SENSOR
+		int ret = 0;
+		char puSendCmd[2];
 
-		i4RetValue = i2c_master_send(g_pstAF_I2Cclient, puSendCmd, 2);
+		puSendCmd[0] = (char)(0xD0);
+		puSendCmd[1] = (char)(0x85);
+		ret = i2c_master_send(g_pstAF_I2Cclient, puSendCmd, 2);
 
-		if (i4RetValue < 0) {
-			LOG_INF("I2C send 0x00 failed!!\n");
-			return -1;
-		}
+		puSendCmd[0] = (char)(0xC8);
+		puSendCmd[1] = (char)(0x01);
+		ret = i2c_master_send(g_pstAF_I2Cclient, puSendCmd, 2);
 
-		i4RetValue = i2c_master_send(g_pstAF_I2Cclient, puSendCmd2, 2);
-
-		if (i4RetValue < 0) {
-			LOG_INF("I2C send 0x01 failed!!\n");
-			return -1;
-		}
-
-		i4RetValue = i2c_master_send(g_pstAF_I2Cclient, puSendCmd3, 2);
-
-		if (i4RetValue < 0) {
-			LOG_INF("I2C send 0x05 failed!!\n");
-			return -1;
-		}
-
-		LOG_INF("driver init success!!\n");
+		puSendCmd[0] = (char)(0xC6);
+		puSendCmd[1] = (char)(0x00);
+		ret = i2c_master_send(g_pstAF_I2Cclient, puSendCmd, 2);
+#endif
 
 		spin_lock(g_pAF_SpinLock);
 		*g_pAF_Opened = 2;
@@ -175,7 +151,7 @@ static int initAF(void)
 static inline int moveAF(unsigned long a_u4Position)
 {
 	int ret = 0;
-    LOG_INF("move %d", a_u4Position);
+
 	if (s4AF_WriteReg((unsigned short)a_u4Position) == 0) {
 		g_u4CurrPosition = a_u4Position;
 		ret = 0;
@@ -204,7 +180,7 @@ static inline int setAFMacro(unsigned long a_u4Position)
 }
 
 /* ////////////////////////////////////////////////////////////// */
-long DW9718AF_Ioctl(struct file *a_pstFile, unsigned int a_u4Command,
+long BU64253AF_Ioctl(struct file *a_pstFile, unsigned int a_u4Command,
 		    unsigned long a_u4Param)
 {
 	long i4RetValue = 0;
@@ -241,31 +217,18 @@ long DW9718AF_Ioctl(struct file *a_pstFile, unsigned int a_u4Command,
 /* 2.Shut down the device on last close. */
 /* 3.Only called once on last time. */
 /* Q1 : Try release multiple times. */
-int DW9718AF_Release(struct inode *a_pstInode, struct file *a_pstFile)
+int BU64253AF_Release(struct inode *a_pstInode, struct file *a_pstFile)
 {
 	LOG_INF("Start\n");
-//dengchao@camera.DRV 2022.2.22 modify to descent dac with geometric progression when power off
-    if (*g_pAF_Opened == 2) {
-        int pos = g_u4CurrPosition;
-        int interval = 15;
-        if (pos > 0 && pos <= 1023) {
-            while (pos >= 138) {
-                pos = pos * 10 / 13 + 10;
-                if (s4AF_WriteReg(pos) != 0) {
-                    LOG_INF("AF DW9718TAF_Release I2C failed");
-                }
-                LOG_INF("DW9718T_Release p%d d%d", pos, interval);
-                mdelay(4);
-            }
-            s4AF_WriteReg(90);
-            mdelay(3);
-            s4AF_WriteReg(60);
-        }
 
-		LOG_INF("apply\n");
-        g_pstAF_I2Cclient->addr = AF_I2C_SLAVE_ADDR;
-        g_pstAF_I2Cclient->addr = g_pstAF_I2Cclient->addr >> 1;
-    }
+	if (*g_pAF_Opened == 2) {
+		char puSendCmd[2];
+
+		puSendCmd[0] = (char)(0x00);
+		puSendCmd[1] = (char)(0x00);
+		i2c_master_send(g_pstAF_I2Cclient, puSendCmd, 2);
+		LOG_INF("Wait\n");
+	}
 
 	if (*g_pAF_Opened) {
 		LOG_INF("Free\n");
@@ -280,7 +243,7 @@ int DW9718AF_Release(struct inode *a_pstInode, struct file *a_pstFile)
 	return 0;
 }
 
-int DW9718AF_SetI2Cclient(struct i2c_client *pstAF_I2Cclient,
+int BU64253AF_SetI2Cclient(struct i2c_client *pstAF_I2Cclient,
 			  spinlock_t *pAF_SpinLock, int *pAF_Opened)
 {
 	g_pstAF_I2Cclient = pstAF_I2Cclient;
@@ -292,7 +255,7 @@ int DW9718AF_SetI2Cclient(struct i2c_client *pstAF_I2Cclient,
 	return 1;
 }
 
-int DW9718AF_GetFileName(unsigned char *pFileName)
+int BU64253AF_GetFileName(unsigned char *pFileName)
 {
 	#if SUPPORT_GETTING_LENS_FOLDER_NAME
 	char FilePath[256];
@@ -309,3 +272,4 @@ int DW9718AF_GetFileName(unsigned char *pFileName)
 	#endif
 	return 1;
 }
+
