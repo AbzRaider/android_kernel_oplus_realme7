@@ -19,9 +19,6 @@
 #include "adsp_platform_driver.h"
 #include "adsp_excep.h"
 #include "adsp_logger.h"
-#ifdef CONFIG_OPLUS_FEATURE_MM_FEEDBACK
-#include <soc/oplus/system/oplus_mm_kevent_fb.h>
-#endif /* CONFIG_OPLUS_FEATURE_MM_FEEDBACK */
 
 #define ADSP_MISC_EXTRA_SIZE    0x400 //1KB
 #define ADSP_MISC_BUF_SIZE      0x10000 //64KB
@@ -76,8 +73,7 @@ static u32 dump_adsp_internal_mem(struct adsp_priv *pdata,
 				  void *buf, size_t size)
 {
 	u32 clk_cfg = 0, uart_cfg = 0, n = 0;
-	u32 clk_mask = ADSP_CLK_UART_EN | ADSP_CLK_CORE_0_EN |
-		       ADSP_CLK_CORE_1_EN;
+	u32 clk_mask = ADSP_CLK_UART_EN | ADSP_CLK_CORE_0_EN;
 	u32 uart_mask = ADSP_UART_RST_N | ADSP_UART_BCLK_CG;
 
 	adsp_enable_clock();
@@ -115,13 +111,8 @@ static int dump_buffer(struct adsp_exception_control *ctrl, int coredump_id)
 	pdata = (struct adsp_priv *)ctrl->priv_data;
 
 	if (ctrl->buf_backup) {
-#ifdef  OPLUS_ARCH_EXTENDS
-//Kunhao.Yan@AudioDriver, remove for adsp dump time out waiting
-		ret = 0;
-#else
 		/* wait last dump done, and release buf_backup */
 		ret = wait_for_completion_timeout(&ctrl->done, 10 * HZ);
-#endif
 
 		/* if not release buf, return EBUSY */
 		if (ctrl->buf_backup)
@@ -216,10 +207,6 @@ static void adsp_exception_dump(struct adsp_exception_control *ctrl)
 			      coredump->assert_log);
 	}
 	pr_info("%s", detail);
-#ifdef CONFIG_OPLUS_FEATURE_MM_FEEDBACK
-	mm_fb_audio_kevent_named(OPLUS_AUDIO_EVENTID_ADSP_CRASH, \
-				MM_FB_KEY_RATELIMIT_5MIN, "FieldData@@%s$$detailData@@audio$$module@@adsp", coredump->assert_log);
-#endif //CONFIG_OPLUS_FEATURE_MM_FEEDBACK
 
 	/* adsp aed api, only detail information available*/
 	aed_common_exception_api("adsp", (const int *)coredump, coredump_size,
@@ -401,8 +388,7 @@ EXPORT_SYMBOL(get_adsp_misc_buffer);
 void get_adsp_aee_buffer(unsigned long *vaddr, unsigned long *size)
 {
 	u32 clk_cfg = 0, uart_cfg = 0, n = 0;
-	u32 clk_mask = ADSP_CLK_UART_EN | ADSP_CLK_CORE_0_EN |
-		       ADSP_CLK_CORE_1_EN;
+	u32 clk_mask = ADSP_CLK_UART_EN | ADSP_CLK_CORE_0_EN;
 	u32 uart_mask = ADSP_UART_RST_N | ADSP_UART_BCLK_CG;
 	struct adsp_priv *pdata = NULL;
 	void *buf = adsp_ke_buffer;

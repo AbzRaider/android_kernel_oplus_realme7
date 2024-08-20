@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2020 MediaTek Inc.
+ * Copyright (c) 2019 MediaTek Inc.
  */
 
 #include <linux/vmalloc.h>         /* needed by vmalloc */
@@ -19,9 +19,6 @@
 #include "adsp_platform_driver.h"
 #include "adsp_excep.h"
 #include "adsp_logger.h"
-#ifdef CONFIG_OPLUS_FEATURE_MM_FEEDBACK
-#include <soc/oplus/system/oplus_mm_kevent_fb.h>
-#endif /* CONFIG_OPLUS_FEATURE_MM_FEEDBACK */
 
 #define ADSP_MISC_EXTRA_SIZE    0x400 //1KB
 #define ADSP_MISC_BUF_SIZE      0x10000 //64KB
@@ -133,7 +130,8 @@ static int dump_buffer(struct adsp_exception_control *ctrl, int coredump_id)
 		+ pdata->dtcm_size
 		+ pdata->sysram_size
 		+ adsp_get_reserve_mem_size(coredump_id)
-		+ adsp_get_reserve_mem_size(ADSP_A_LOGGER_MEM_ID);
+		+ adsp_get_reserve_mem_size(ADSP_A_LOGGER_MEM_ID)
+		+ adsp_get_reserve_mem_size(ADSP_B_LOGGER_MEM_ID);
 
 	buf = vzalloc(total);
 	if (!buf)
@@ -144,6 +142,7 @@ static int dump_buffer(struct adsp_exception_control *ctrl, int coredump_id)
 			pdata->sysram, pdata->sysram_size, 0, -1);
 	n += dump_adsp_shared_memory(buf + n, total - n, coredump_id);
 	n += dump_adsp_shared_memory(buf + n, total - n, ADSP_A_LOGGER_MEM_ID);
+	n += dump_adsp_shared_memory(buf + n, total - n, ADSP_B_LOGGER_MEM_ID);
 
 	reinit_completion(&ctrl->done);
 	ctrl->buf_backup = buf;
@@ -185,6 +184,8 @@ static void adsp_exception_dump(struct adsp_exception_control *ctrl)
 
 	if (pdata->id == ADSP_A_ID)
 		coredump_id = ADSP_A_CORE_DUMP_MEM_ID;
+	else
+		coredump_id = ADSP_B_CORE_DUMP_MEM_ID;
 
 	coredump = adsp_get_reserve_mem_virt(coredump_id);
 	coredump_size = adsp_get_reserve_mem_size(coredump_id);
@@ -216,10 +217,6 @@ static void adsp_exception_dump(struct adsp_exception_control *ctrl)
 			      coredump->assert_log);
 	}
 	pr_info("%s", detail);
-#ifdef CONFIG_OPLUS_FEATURE_MM_FEEDBACK
-	mm_fb_audio_kevent_named(OPLUS_AUDIO_EVENTID_ADSP_CRASH, \
-				MM_FB_KEY_RATELIMIT_5MIN, "FieldData@@%s$$detailData@@audio$$module@@adsp", coredump->assert_log);
-#endif //CONFIG_OPLUS_FEATURE_MM_FEEDBACK
 
 	/* adsp aed api, only detail information available*/
 	aed_common_exception_api("adsp", (const int *)coredump, coredump_size,
@@ -331,6 +328,7 @@ void adsp_wdt_handler(int irq, void *data, int cid)
 	if (!adsp_aed_dispatch(EXCEP_RUNTIME, data))
 		pr_info("%s, already resetting, ignore core%d wdt",
 			__func__, pdata->id);
+
 }
 
 void get_adsp_misc_buffer(unsigned long *vaddr, unsigned long *size)
@@ -425,6 +423,11 @@ void get_adsp_aee_buffer(unsigned long *vaddr, unsigned long *size)
 	n += copy_from_buffer(buf + n, len - n,
 				pdata->dtcm, pdata->dtcm_size, 0, -1);
 
+	pdata = get_adsp_core_by_id(ADSP_B_ID);
+
+	n += copy_from_buffer(buf + n, len - n,
+				pdata->dtcm, pdata->dtcm_size, 0, -1);
+
 	switch_adsp_clk_ctrl_cg(false, (~clk_cfg) & clk_mask);
 	switch_adsp_uart_ctrl_cg(false, (~uart_cfg) & uart_mask);
 
@@ -474,7 +477,7 @@ static ssize_t adsp_dump_ke_show(struct file *filep, struct kobject *kobj,
 {
 	unsigned long tmp[2];
 	ssize_t n = 0;
-	ssize_t threshold[2];
+	ssize_t threshold[3];
 
 	if (offset == 0) /* only do ke ramdump once at start */
 		get_adsp_aee_buffer(&tmp[0], &tmp[1]);
@@ -482,6 +485,8 @@ static ssize_t adsp_dump_ke_show(struct file *filep, struct kobject *kobj,
 	threshold[0] = ADSP_KE_DUMP_LEN;
 	threshold[1] = threshold[0] +
 		adsp_get_reserve_mem_size(ADSP_A_LOGGER_MEM_ID);
+	threshold[2] = threshold[1] +
+		adsp_get_reserve_mem_size(ADSP_B_LOGGER_MEM_ID);
 
 	if (offset >= 0 && offset < threshold[0]) {
 		n = copy_from_buffer(buf, -1, adsp_ke_buffer,
@@ -490,7 +495,12 @@ static ssize_t adsp_dump_ke_show(struct file *filep, struct kobject *kobj,
 		n = copy_from_adsp_shared_memory(
 				buf, offset - threshold[0],
 				size, ADSP_A_LOGGER_MEM_ID);
+	} else if (offset >= threshold[1] && offset < threshold[2]) {
+		n = copy_from_adsp_shared_memory(
+				buf, offset - threshold[1],
+				size, ADSP_B_LOGGER_MEM_ID);
 	}
+
 	return n;
 }
 
@@ -499,13 +509,18 @@ static ssize_t adsp_dump_log_show(struct file *filep, struct kobject *kobj,
 				char *buf, loff_t offset, size_t size)
 {
 	ssize_t n = 0;
-	ssize_t threshold;
+	ssize_t threshold[2];
 
-	threshold = adsp_get_reserve_mem_size(ADSP_A_LOGGER_MEM_ID);
+	threshold[0] = adsp_get_reserve_mem_size(ADSP_A_LOGGER_MEM_ID);
+	threshold[1] = threshold[0] +
+		adsp_get_reserve_mem_size(ADSP_B_LOGGER_MEM_ID);
 
-	if (offset >= 0 && offset < threshold) {
+	if (offset >= 0 && offset < threshold[0]) {
 		n = copy_from_adsp_shared_memory(buf, offset,
 				size, ADSP_A_LOGGER_MEM_ID);
+	} else if (offset >= threshold[0] && offset < threshold[1]) {
+		n = copy_from_adsp_shared_memory(buf, offset - threshold[0],
+				size, ADSP_B_LOGGER_MEM_ID);
 	}
 	return n;
 }

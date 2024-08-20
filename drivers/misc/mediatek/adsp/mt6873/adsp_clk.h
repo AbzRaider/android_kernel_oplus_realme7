@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2020 MediaTek Inc.
+ * Copyright (c) 2019 MediaTek Inc.
  */
 
 #ifndef ADSP_CLK_H
@@ -8,17 +8,21 @@
 
 #include <linux/platform_device.h>
 
-#define CLK_DEFAULT_INIT_CK     CLK_TOP_ADSPPLL_D6
+#define CLK_DEFAULT_INIT_CK     CLK_TOP_ADSPPLL
 #define CLK_DEFAULT_26M_CK      CLK_TOP_CLK26M
 
 enum adsp_clk {
-	CLK_ADSP_INFRA,
+	CLK_SCP_SYS_ADSP,
+	CLK_ADSP_CK_CG,
 	CLK_TOP_ADSP_SEL,
 	CLK_TOP_CLK26M,
-	CLK_TOP_MMPLL_D4,
-	CLK_TOP_ADSPPLL_D4,
-	CLK_TOP_ADSPPLL_D6,
+	CLK_TOP_ADSPPLL,
 	ADSP_CLK_NUM
+};
+
+enum scp_clk {
+	CLK_TOP_SCP_SEL,
+	SCP_CLK_NUM
 };
 
 void adsp_set_clock_freq(enum adsp_clk clk);
