@@ -19,6 +19,9 @@
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 #include <linux/soc/mediatek/mtk-cmdq.h>
+#ifdef OPLUS_BUG_STABILITY
+#include <soc/oplus/system/oplus_mm_kevent_fb.h>
+#endif
 
 #include "mtk_drm_drv.h"
 #include "mtk_drm_crtc.h"
@@ -794,7 +797,7 @@ static void mtk_ovl_config(struct mtk_ddp_comp *comp,
 
 	if (comp->mtk_crtc->is_dual_pipe) {
 		width = cfg->w / 2;
-		DDPMSG("\n");
+		DDPDBG("\n");
 	} else
 		width = cfg->w;
 
@@ -1684,6 +1687,17 @@ static void mtk_ovl_layer_config(struct mtk_ddp_comp *comp, unsigned int idx,
 			__func__, vrefresh, ratio_tmp);
 		DDPDBG("%s, vtotal=%d, vact=%d\n",
 			__func__, vtotal, vact);
+
+		if (drm_crtc_index(&comp->mtk_crtc->base) == 2 &&
+			(fmt == DRM_FORMAT_RGBA8888 || fmt == DRM_FORMAT_BGRA8888 ||
+			fmt == DRM_FORMAT_ARGB8888 || fmt == DRM_FORMAT_ABGR8888))
+			cmdq_pkt_write(handle, comp->cmdq_base,
+		       comp->regs_pa + DISP_REG_OVL_ROI_BGCLR, 0x0,
+		       ~0);
+		else
+			cmdq_pkt_write(handle, comp->cmdq_base,
+		       comp->regs_pa + DISP_REG_OVL_ROI_BGCLR, OVL_ROI_BGCLR,
+		       ~0);
 
 		mtk_ovl_layer_on(comp, lye_idx, ext_lye_idx, handle);
 		/*constant color :non RDMA source*/
@@ -3763,6 +3777,9 @@ static int mtk_disp_ovl_probe(struct platform_device *pdev)
 		DDPAEE("%s:%d, failed to request irq:%d ret:%d comp_id:%d\n",
 				__func__, __LINE__,
 				irq, ret, comp_id);
+		#ifdef OPLUS_BUG_STABILITY
+		mm_fb_display_kevent("DisplayDriverID@@501$$", MM_FB_KEY_RATELIMIT_1H, "ovl_probe error irq:%d ret:%d comp_id:%d", irq, ret, comp_id);
+		#endif
 		return ret;
 	}
 

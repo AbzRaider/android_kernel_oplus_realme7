@@ -226,6 +226,10 @@
 #define MIPITX_CK_SW_LPTX_PRE_OE	(0x0348UL)
 #define MIPITX_CKC_SW_LPTX_PRE_OE	(0x0368UL)
 
+#ifdef OPLUS_BUG_STABILITY
+unsigned int oplus_panel_index;
+#endif	/* OPLUS_BUG_STABILITY */
+
 enum MIPITX_PAD_VALUE {
 	PAD_D2P_T0A = 0,
 	PAD_D2N_T0B,
@@ -259,6 +263,11 @@ struct mtk_mipi_tx {
 	struct clk_hw pll_hw;
 	struct clk *pll;
 };
+
+#ifdef OPLUS_BUG_STABILITY
+/* Zhijun.Ye@MM.Display.LCD.Machine 2022/01/13, Add for ssc config */
+extern unsigned int oplus_get_ssc_config_data(void);
+#endif
 
 static inline struct mtk_mipi_tx *mtk_mipi_tx_from_clk_hw(struct clk_hw *hw)
 {
@@ -738,7 +747,7 @@ static bool mtk_is_mipi_tx_enable(struct clk_hw *hw)
 	return ((tmp & RG_DSI_PLL_EN) > 0);
 }
 
-static inline unsigned int _dsi_get_pcw(unsigned long data_rate,
+inline unsigned int _dsi_get_pcw(unsigned long data_rate,
 	unsigned int pcw_ratio)
 {
 	unsigned int pcw, tmp, pcw_floor;
@@ -858,6 +867,10 @@ static int mtk_mipi_tx_pll_prepare_mt6885(struct clk_hw *hw)
 	unsigned int txdiv, txdiv0, txdiv1, tmp;
 	u32 rate;
 
+	#ifdef OPLUS_BUG_STABILITY
+	/*u32 reg_val = 0;*/
+	#endif	/* OPLUS_BUG_STABILITY */
+
 	DDPDBG("%s+\n", __func__);
 
 	/* if mipitx is on, skip it... */
@@ -934,6 +947,21 @@ static int mtk_mipi_tx_pll_prepare_mt6885(struct clk_hw *hw)
 
 	/* TODO: should write bit8 to set SW_ANA_CK_EN here */
 	mtk_mipi_tx_set_bits(mipi_tx, MIPITX_SW_CTRL_CON4, 1);
+
+	#ifdef OPLUS_BUG_STABILITY
+	/*2112701 is "oplus21127_samsung_ams643ag01_1080p_dsi_cmd,lcm"*/
+	if (oplus_panel_index == 2112701) {
+		writel(0x01b10003, mipi_tx->regs + MIPITX_PLL_CON2);
+		/*example,mipi clock down n% ,(( n x mipi clock x 4 x 262144 + 281644 ) / 563329)*/
+		/*299M dowm 0.1%*/
+		writel(0x00380038, mipi_tx->regs + MIPITX_PLL_CON3);
+
+		/*reg_val = readl(mipi_tx->regs + MIPITX_PLL_CON2);
+		printk("%s - open ssc CON2 reg_val=0x%x \n",__func__,reg_val);
+		reg_val = readl(mipi_tx->regs + MIPITX_PLL_CON3);
+		printk("%s - open ssc CON3 reg_val=0x%x \n",__func__,reg_val);*/
+	}
+	#endif	/* OPLUS_BUG_STABILITY */
 
 	DDPDBG("%s-\n", __func__);
 
@@ -1296,6 +1324,10 @@ static int mtk_mipi_tx_pll_prepare_mt6877(struct clk_hw *hw)
 	struct mtk_mipi_tx *mipi_tx = mtk_mipi_tx_from_clk_hw(hw);
 	unsigned int txdiv, txdiv0, txdiv1, tmp;
 	u32 rate;
+	#ifdef OPLUS_BUG_STABILITY
+	/* Zhijun.Ye@MM.Display.LCD.Machine 2022/01/13, Add for ssc config */
+	unsigned int ssc_config_data;
+	#endif
 
 	DDPDBG("%s+\n", __func__);
 
@@ -1373,6 +1405,17 @@ static int mtk_mipi_tx_pll_prepare_mt6877(struct clk_hw *hw)
 
 	/* TODO: should write bit8 to set SW_ANA_CK_EN here */
 	mtk_mipi_tx_set_bits(mipi_tx, MIPITX_SW_CTRL_CON4, 1);
+
+	#ifdef OPLUS_BUG_STABILITY
+	/* Zhijun.Ye@MM.Display.LCD.Machine 2022/01/13, Add for ssc config */
+	ssc_config_data = oplus_get_ssc_config_data();
+	if (ssc_config_data != 0) {
+		writel(0x01b10003, mipi_tx->regs + MIPITX_PLL_CON2);
+		/* ssc config */
+		writel(ssc_config_data, mipi_tx->regs + MIPITX_PLL_CON3);
+		DDPDBG("%s ssc_config_data:%x\n", __func__, ssc_config_data);
+	}
+	#endif
 
 	DDPDBG("%s-\n", __func__);
 #endif
@@ -1900,7 +1943,11 @@ void mtk_mipi_tx_pll_rate_switch_gce(struct phy *phy,
 static long mtk_mipi_tx_pll_round_rate(struct clk_hw *hw, unsigned long rate,
 				       unsigned long *prate)
 {
+#ifndef CONFIG_MTK_MT6382_BDG
 	return clamp_val(rate, 50000000, 1250000000);
+#else
+	return clamp_val(rate, 50000000, 2300000000);
+#endif
 }
 
 static int mtk_mipi_tx_pll_set_rate(struct clk_hw *hw, unsigned long rate,
@@ -1911,7 +1958,6 @@ static int mtk_mipi_tx_pll_set_rate(struct clk_hw *hw, unsigned long rate,
 	DDPDBG("%s set rate: %lu Hz\n", __func__, rate);
 
 	dev_dbg(mipi_tx->dev, "set rate: %lu Hz\n", rate);
-
 	mipi_tx->data_rate = rate;
 
 	return 0;

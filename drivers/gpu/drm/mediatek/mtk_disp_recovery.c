@@ -37,9 +37,32 @@
 #include "mtk_drm_mmp.h"
 #include "mtk_drm_fbdev.h"
 #include "mtk_drm_trace.h"
+//#ifdef OPLUS_FEATURE_ESD
+#include <mt-plat/mtk_boot_common.h>
+//#endif
+#include "mtk_dump.h"
+
+#ifdef CONFIG_MTK_MT6382_BDG
+#include "mtk_disp_bdg.h"
+#include "mtk_dsi.h"
+#endif
 
 #define ESD_TRY_CNT 5
-#define ESD_CHECK_PERIOD 2000 /* ms */
+//#ifndef OPLUS_FEATURE_ESD
+//#define ESD_CHECK_PERIOD 2000 /* ms */
+//#else
+#define ESD_CHECK_PERIOD 5000 /* ms */
+#define TIMEOUT_MS 20
+
+extern unsigned long esd_mode;
+extern unsigned int ffl_backlight_backup;
+unsigned long esd_flag = 0;
+EXPORT_SYMBOL(esd_flag);
+/*Yaqiang.shi@RM.MM.LCD.Driver, 2021/03/15,
+add for ignore esd check this time because lcd hasn't been init completely */
+unsigned int oplus_lcm_display_on = 1;
+EXPORT_SYMBOL(oplus_lcm_display_on);
+//#endif
 
 /* pinctrl implementation */
 long _set_state(struct drm_crtc *crtc, const char *name)
@@ -114,7 +137,15 @@ static inline int _can_switch_check_mode(struct drm_crtc *crtc,
 static inline int _lcm_need_esd_check(struct mtk_panel_ext *panel_ext)
 {
 	int ret = 0;
-
+//#ifdef OPLUS_FEATURE_ESD
+	switch(get_boot_mode())
+	{
+		case FACTORY_BOOT:
+				 return ret;
+		default:
+				 break;
+	}
+//#endif
 	if (panel_ext->params->esd_check_enable == 1 &&
 		mtk_drm_lcm_is_connect()) {
 		ret = 1;
@@ -146,18 +177,30 @@ static void esd_cmdq_timeout_cb(struct cmdq_cb_data data)
 	struct drm_crtc *crtc = data.data;
 	struct mtk_drm_crtc *mtk_crtc = to_mtk_crtc(crtc);
 	struct mtk_drm_esd_ctx *esd_ctx = mtk_crtc->esd_ctx;
+#ifdef CONFIG_MTK_MT6382_BDG
+	struct mtk_ddp_comp *output_comp = NULL;
+#endif
 
 	if (!crtc) {
 		DDPMSG("%s find crtc fail\n", __func__);
 		return;
 	}
-
-	DDPMSG("read flush fail\n");
+	DDPMSG("[error]%s cmdq timeout out\n", __func__);
 	esd_ctx->chk_sta = 0xff;
+#ifndef CONFIG_MTK_MT6382_BDG
 	mtk_drm_crtc_analysis(crtc);
 	mtk_drm_crtc_dump(crtc);
+#else
+	if (mtk_crtc) {
+		output_comp = mtk_ddp_comp_request_output(mtk_crtc);
+		if (output_comp) {
+			mtk_dump_analysis(output_comp);
+			mtk_dump_reg(output_comp);
+		}
+	}
+	bdg_dsi_dump_reg(DISP_BDG_DSI0);
+#endif
 }
-
 
 int _mtk_esd_check_read(struct drm_crtc *crtc)
 {
@@ -169,7 +212,6 @@ int _mtk_esd_check_read(struct drm_crtc *crtc)
 	int ret = 0;
 
 	DDPINFO("[ESD]ESD read panel\n");
-
 
 	output_comp = mtk_ddp_comp_request_output(mtk_crtc);
 	if (unlikely(!output_comp)) {
@@ -239,7 +281,15 @@ int _mtk_esd_check_read(struct drm_crtc *crtc)
 	esd_ctx = mtk_crtc->esd_ctx;
 	esd_ctx->chk_sta = 0;
 
-	cmdq_pkt_flush(cmdq_handle);
+	//#ifndef OPLUS_FEATURE_ESD
+	//cmdq_pkt_flush(cmdq_handle);
+	//#else
+	ret = cmdq_pkt_flush(cmdq_handle);
+	if (ret != 0) {
+		pr_err("%s: error esd read flush process\n", __func__);
+		goto done;
+	}
+	//#endif
 
 	CRTC_MMP_MARK(drm_crtc_index(crtc), esd_check, 2, 4);
 
@@ -396,8 +446,12 @@ static int mtk_drm_esd_check(struct drm_crtc *crtc)
 	}
 
 	/* switch ESD check mode */
-	if (_can_switch_check_mode(crtc, panel_ext) &&
-	    !mtk_crtc_is_frame_trigger_mode(crtc))
+	//#ifndef OPLUS_FEATURE_ESD
+	//if (_can_switch_check_mode(crtc, panel_ext) &&
+	    //!mtk_crtc_is_frame_trigger_mode(crtc))
+	//#else
+	if (_can_switch_check_mode(crtc, panel_ext))
+	//#endif
 		esd_ctx->chk_mode =
 			(esd_ctx->chk_mode == READ_EINT) ? READ_LCM : READ_EINT;
 
@@ -411,6 +465,9 @@ static int mtk_drm_esd_recover(struct drm_crtc *crtc)
 	struct mtk_drm_crtc *mtk_crtc = to_mtk_crtc(crtc);
 	struct mtk_ddp_comp *output_comp;
 	int ret = 0;
+#ifdef CONFIG_MTK_MT6382_BDG
+	struct mtk_dsi *dsi = NULL;
+#endif
 
 	CRTC_MMP_EVENT_START(drm_crtc_index(crtc), esd_recovery, 0, 0);
 	if (crtc->state && !crtc->state->active) {
@@ -428,6 +485,9 @@ static int mtk_drm_esd_recover(struct drm_crtc *crtc)
 	mtk_drm_idlemgr_kick(__func__, &mtk_crtc->base, 0);
 
 	mtk_ddp_comp_io_cmd(output_comp, NULL, CONNECTOR_PANEL_DISABLE, NULL);
+#ifdef CONFIG_MTK_MT6382_BDG
+	bdg_common_deinit(DISP_BDG_DSI0, NULL);
+#endif
 
 	mtk_drm_crtc_disable(crtc, true);
 	CRTC_MMP_MARK(drm_crtc_index(crtc), esd_recovery, 0, 2);
@@ -441,6 +501,10 @@ static int mtk_drm_esd_recover(struct drm_crtc *crtc)
 	mtk_drm_crtc_enable(crtc);
 	CRTC_MMP_MARK(drm_crtc_index(crtc), esd_recovery, 0, 3);
 
+#ifdef CONFIG_MTK_MT6382_BDG
+	dsi = container_of(output_comp, struct mtk_dsi, ddp_comp);
+	mtk_output_bdg_enable(dsi, false);
+#endif
 	mtk_ddp_comp_io_cmd(output_comp, NULL, CONNECTOR_PANEL_ENABLE, NULL);
 
 	CRTC_MMP_MARK(drm_crtc_index(crtc), esd_recovery, 0, 4);
@@ -501,17 +565,37 @@ static int mtk_drm_esd_check_worker_kthread(void *data)
 
 	while (1) {
 		msleep(ESD_CHECK_PERIOD);
-		ret = wait_event_interruptible(
+		//#ifndef OPLUS_FEATURE_ESD
+		/*ret = wait_event_interruptible(
 			esd_ctx->check_task_wq,
 			atomic_read(&esd_ctx->check_wakeup) &&
 			(atomic_read(&esd_ctx->target_time) ||
 			(panel_ext->params->cust_esd_check == 0) &&
-			 (esd_ctx->chk_mode == READ_EINT)));
-		if (ret < 0) {
+			 (esd_ctx->chk_mode == READ_EINT)));*/
+		//#else
+		ret = wait_event_interruptible_timeout(
+			esd_ctx->check_task_wq,
+			atomic_read(&esd_ctx->check_wakeup) &&
+			(atomic_read(&esd_ctx->target_time) ||
+				esd_ctx->chk_mode == READ_EINT), msecs_to_jiffies(TIMEOUT_MS));		
+		//#endif
+
+		//#ifndef OPLUS_BUG_STABILITY
+		//if (ret < 0) {
+		//#else
+		if (ret < 0 || ffl_backlight_backup == 0 || ffl_backlight_backup == 1 || (ret == 0 && !atomic_read(&esd_ctx->check_wakeup))) {
+		//#endif
 			DDPINFO("[ESD]check thread waked up accidently\n");
 			continue;
 		}
 
+		/*Yaqiang.shi@RM.MM.LCD.Driver, 2021/03/15,
+		add for ignore esd check this time because lcd hasn't been init completely */
+		if (!oplus_lcm_display_on) {
+			DDPINFO("[ESD]SYQ check thread waked up accidently\n");
+			continue;
+		}
+		/*end*/
 		mutex_lock(&private->commit.lock);
 		DDP_MUTEX_LOCK(&mtk_crtc->lock, __func__, __LINE__);
 		mtk_drm_trace_begin("esd");
@@ -529,13 +613,22 @@ static int mtk_drm_esd_check_worker_kthread(void *data)
 		do {
 			ret = mtk_drm_esd_check(crtc);
 
-			if (!ret) /* success */
+			//#ifndef OPLUS_FEATURE_ESD
+			//if (!ret) /* success */
+				//break;
+			//#else
+			if (!esd_mode && !ret) /* success */
 				break;
-
+			esd_flag = 1;
+			//#endif
 			DDPPR_ERR(
 				"[ESD]esd check fail, will do esd recovery. try=%d\n",
 				i);
 			mtk_drm_esd_recover(crtc);
+			//#ifdef OPLUS_FEATURE_ESD
+			esd_mode = 0;
+			esd_flag = 0;
+			//#endif
 			recovery_flg = 1;
 		} while (++i < ESD_TRY_CNT);
 

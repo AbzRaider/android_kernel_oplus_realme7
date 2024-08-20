@@ -1632,9 +1632,9 @@ static void clear_layer(struct drm_mtk_layering_info *disp_info,
 	int di = 0;
 	int i = 0;
 	struct drm_mtk_layer_config *c;
-	struct drm_crtc *crtc;
-	struct mtk_drm_crtc *mtk_crtc;
-	int is_dual_pipe = 0;
+        struct drm_crtc *crtc;
+        struct mtk_drm_crtc *mtk_crtc;
+        int is_dual_pipe = 0;
 
 	if (!get_layering_opt(LYE_OPT_CLEAR_LAYER))
 		return;
@@ -1675,9 +1675,9 @@ static void clear_layer(struct drm_mtk_layering_info *disp_info,
 			c->layer_caps |= MTK_DISP_CLIENT_CLEAR_LAYER;
 
 		if (di == 0) {
-			drm_for_each_crtc(crtc, drm_dev)
-				if (drm_crtc_index(crtc) == 0)
-					break;
+	  		drm_for_each_crtc(crtc, drm_dev)
+  				if (drm_crtc_index(crtc) == 0)
+  					break;
 			if (crtc) {
 				mtk_crtc = to_mtk_crtc(crtc);
 				is_dual_pipe = mtk_crtc->is_dual_pipe;
