@@ -50,6 +50,7 @@
 
 #define VOW_WAITCHECK_INTERVAL_MS      2
 #define MAX_VOW_INFO_LEN               7
+#define VOW_VOICE_RECORD_LOG_THRESHOLD 320
 #define VOW_VOICE_RECORD_THRESHOLD     2560 /* 80ms */
 #define VOW_VOICE_RECORD_BIG_THRESHOLD 8320 /* 260ms */
 #define VOW_IPI_SEND_CNT_TIMEOUT       50 /* 50 loop */
@@ -129,6 +130,9 @@
 #define VOW_SET_PAYLOADDUMP_INFO      _IOW(VOW_IOC_MAGIC, 0x16, unsigned int)
 #define VOW_READ_VOICE_DATA           _IOW(VOW_IOC_MAGIC, 0x17, unsigned int)
 #define VOW_READ_VOW_DUMP_DATA        _IOW(VOW_IOC_MAGIC, 0x18, unsigned int)
+//#ifdef OPLUS_ARCH_EXTENDS
+#define VOW_GET_BARGEIN_FLAG          _IOW(VOW_IOC_MAGIC, 0x19, unsigned int)
+//#endif /* OPLUS_ARCH_EXTENDS */
 
 #ifdef VOW_ECHO_SW_SRC
 #define VOW_BARGEIN_AFE_MEMIF_SIZE    0x1E00
@@ -136,6 +140,8 @@
 #define VOW_BARGEIN_AFE_MEMIF_SIZE    0xA00
 #endif
 #define VOW_BARGEIN_IRQ_MAX_NUM       32
+
+#define VOICE_DATA_MSG_NUM            10
 
 #define KERNEL_VOW_DRV_VER              "2.1.0"
 #define DEFAULT_GOOGLE_ENGINE_VER       2147483647
@@ -285,6 +291,7 @@ enum vow_model_control_t {
 enum {
 	VENDOR_ID_MTK = 77,     //'M'
 	VENDOR_ID_AMAZON = 65,  //'A'
+	VENDOR_ID_SPEECH = 83,  //'S'
 	VENDOR_ID_OTHERS = 71,
 	VENDOR_ID_NONE = 0
 };
@@ -382,6 +389,11 @@ struct vow_payloaddump_info_kernel_t {
 	compat_size_t max_payloaddump_size;
 };
 
+struct voice_data_msg_t {
+	unsigned int offset;
+	unsigned int length;
+};
+
 #else  /* #ifdef CONFIG_COMPAT */
 
 struct vow_speaker_model_t {
@@ -422,6 +434,11 @@ struct vow_payloaddump_info_t {
 	long return_payloaddump_addr;
 	long return_payloaddump_size_addr;
 	long max_payloaddump_size;
+};
+
+struct voice_data_msg_t {
+	unsigned int offset;
+	unsigned int length;
 };
 
 #endif  /* #ifdef CONFIG_COMPAT */
