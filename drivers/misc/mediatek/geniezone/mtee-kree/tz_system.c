@@ -1039,7 +1039,8 @@ TZ_RESULT KREE_CreateSession(const char *ta_uuid, KREE_SESSION_HANDLE *pHandle)
 	/* connect to target service */
 	ret = KREE_OpenFd(ta_uuid, &chan_fd);
 	if (ret) {
-		KREE_ERR("%s: open fd fail\n", __func__);
+		KREE_ERR("[%s] %s\n", __func__, ta_uuid);
+		KREE_ERR("%s: open fd fail, ret %d\n", __func__, ret);
 		goto create_session_out;
 	}
 
@@ -1168,8 +1169,6 @@ TZ_RESULT KREE_TeeServiceCallPlus(KREE_SESSION_HANDLE handle, uint32_t command,
 
 	/* pass cpumask to channel */
 	chan_p->cpumask = cpumask;
-
-	memset(&cparam, 0, sizeof(cparam));
 
 	cparam.command = command;
 	cparam.paramTypes = paramTypes;
