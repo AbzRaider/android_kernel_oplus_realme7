@@ -34,10 +34,6 @@
 
 #include <mt-plat/mtk_boot_common.h>
 
-#ifdef OPLUS_FEATURE_CHG_BASIC
-#include <soc/oplus/system/oppo_project.h>
-#endif /*OPLUS_FEATURE_CHG_BASIC*/
-
 #define FRA (48)
 #define PARA (28)
 
@@ -111,28 +107,52 @@ void usb_phy_switch_to_usb(void)
 #define SHFT_RG_USB20_TERM_VREF_SEL 8
 #define OFFSET_RG_USB20_PHY_REV6 0x18
 #define SHFT_RG_USB20_PHY_REV6 30
+
 void usb_phy_tuning(void)
 {
 	static bool inited;
 	static s32 u2_vrt_ref, u2_term_ref, u2_enhance;
-	static struct device_node *of_node;
+	struct device_node *of_node;
 
 	if (!inited) {
-		u2_vrt_ref = u2_term_ref = u2_enhance = -1;
+		/* apply default value */
+		u2_vrt_ref = -1;
+		u2_term_ref = -1;
+		u2_enhance = -1;
+
 		of_node = of_find_compatible_node(NULL,
 			NULL, "mediatek,phy_tuning");
 		if (of_node) {
-			/* value won't be updated if property not being found */
+#ifdef OPLUS_FEATURE_CHG_BASIC
+			if (!mtk_musb->is_host) {
+				/* value won't be updated if property not being found */
+				of_property_read_u32(of_node,
+					"u2_vrt_ref", (u32 *) &u2_vrt_ref);
+				of_property_read_u32(of_node,
+					"u2_term_ref", (u32 *) &u2_term_ref);
+				of_property_read_u32(of_node,
+					"u2_enhance", (u32 *) &u2_enhance);
+			} else {
+				of_property_read_u32(of_node,
+					"host_u2_vrt_ref", (u32 *) &u2_vrt_ref);
+				of_property_read_u32(of_node,
+					"host_u2_term_ref", (u32 *) &u2_term_ref);
+				of_property_read_u32(of_node,
+					"host_u2_enhance", (u32 *) &u2_enhance);
+			}
+#else
+
 			of_property_read_u32(of_node,
 				"u2_vrt_ref", (u32 *) &u2_vrt_ref);
 			of_property_read_u32(of_node,
 				"u2_term_ref", (u32 *) &u2_term_ref);
 			of_property_read_u32(of_node,
 				"u2_enhance", (u32 *) &u2_enhance);
+#endif /* OPLUS_FEATURE_CHG_BASIC */
+
 		}
 		inited = true;
-	} else if (!of_node)
-		return;
+	}
 
 	if (u2_vrt_ref != -1) {
 		if (u2_vrt_ref <= VAL_MAX_WIDTH_3) {
@@ -164,10 +184,10 @@ void usb_phy_tuning(void)
 int usb2jtag_usb_init(void)
 {
 	struct device_node *node = NULL;
-	void __iomem *usb_phy_base;
+	void __iomem *usb_phy_base, usb_sif_base;
 	u32 temp;
 
-	node = of_find_compatible_node(NULL, NULL, "mediatek,mt6768-usb20");
+	node = of_find_compatible_node(NULL, NULL, "mediatek,mt6781-usb20");
 
 	if (!node) {
 		pr_err("[USB2JTAG] map node @ mediatek,USB0 failed\n");
@@ -180,17 +200,19 @@ int usb2jtag_usb_init(void)
 		return -1;
 	}
 
+	usb_sif_base = usb_phy_base + USB_PHY_OFFSET;
+
 	/* rg_usb20_gpio_ctl: bit[9] = 1 */
-	temp = readl(usb_phy_base + 0x820);
-	writel(temp | (1 << 9), usb_phy_base + 0x820);
+	temp = readl(usb_sif_base + 0x20);
+	writel(temp | (1 << 9), usb_sif_base + 0x20);
 
 	/* RG_USB20_BGR_EN: bit[0] = 1 */
-	temp = readl(usb_phy_base + 0x800);
-	writel(temp | (1 << 0), usb_phy_base + 0x800);
+	temp = readl(usb_sif_base);
+	writel(temp | (1 << 0), usb_sif_base);
 
 	/* RG_USB20_BC11_SW_EN: bit[23] = 0 */
-	temp = readl(usb_phy_base + 0x818);
-	writel(temp & ~(1 << 23), usb_phy_base + 0x818);
+	temp = readl(usb_sif_base + 0x18);
+	writel(temp & ~(1 << 23), usb_sif_base + 0x18);
 
 	/* wait stable */
 	mdelay(1);
@@ -227,7 +249,7 @@ bool usb_prepare_clock(bool enable)
 
 	if (IS_ERR_OR_NULL(musb_clk) ||
 			IS_ERR_OR_NULL(musb_clk_top_sel) ||
-			IS_ERR_OR_NULL(musb_clk_univpll3_d4)) {
+			IS_ERR_OR_NULL(musb_clk_univpll5_d2)) {
 		DBG(0, "clk not ready\n");
 		mutex_unlock(&prepare_lock);
 		return 0;
@@ -239,11 +261,12 @@ bool usb_prepare_clock(bool enable)
 			DBG(0, "musb_clk_top_sel prepare fail\n");
 		} else {
 			if (clk_set_parent(musb_clk_top_sel,
-						musb_clk_univpll3_d4))
+						musb_clk_univpll5_d2))
 				DBG(0, "musb_clk_top_sel set_parent fail\n");
 		}
 		if (clk_prepare(musb_clk))
 			DBG(0, "musb_clk prepare fail\n");
+
 
 		atomic_inc(&clk_prepare_cnt);
 	} else {
@@ -327,64 +350,6 @@ exit:
 	    enable, count, virt_enable, virt_disable,
 	    real_enable, real_disable);
 	return 1;
-}
-
-static void hs_slew_rate_cal(void)
-{
-	unsigned long data;
-	unsigned long x;
-	unsigned char value;
-	unsigned long start_time, timeout;
-	unsigned int timeout_flag = 0;
-	/* enable usb ring oscillator. */
-	USBPHY_SET32(0x14, (0x1 << 15));
-
-	/* wait 1us. */
-	udelay(1);
-
-	/* enable free run clock */
-	USBPHY_SET32(0xF10 - 0x800, (0x01 << 8));
-	/* setting cyclecnt. */
-	USBPHY_SET32(0xF00 - 0x800, (0x04 << 8));
-	/* enable frequency meter */
-	USBPHY_SET32(0xF00 - 0x800, (0x01 << 24));
-
-	/* wait for frequency valid. */
-	start_time = jiffies;
-	timeout = jiffies + 3 * HZ;
-
-	while (!((USBPHY_READ32(0xF10 - 0x800) & 0xFF) == 0x1)) {
-		if (time_after(jiffies, timeout)) {
-			timeout_flag = 1;
-			break;
-		}
-	}
-
-	/* read result. */
-	if (timeout_flag) {
-		DBG(0, "[USBPHY] Slew Rate Calibration: Timeout\n");
-		value = 0x4;
-	} else {
-		data = USBPHY_READ32(0xF0C - 0x800);
-		x = ((1024 * FRA * PARA) / data);
-		value = (unsigned char)(x / 1000);
-		if ((x - value * 1000) / 100 >= 5)
-			value += 1;
-		DBG(1, "[USBPHY]slew calibration:FM_OUT =%lu,x=%lu,value=%d\n",
-				data, x, value);
-	}
-
-	/* disable Frequency and disable free run clock. */
-	USBPHY_CLR32(0xF00 - 0x800, (0x01 << 24));
-	USBPHY_CLR32(0xF10 - 0x800, (0x01 << 8));
-
-#define MSK_RG_USB20_HSTX_SRCTRL 0x7
-	/* all clr first then set */
-	USBPHY_CLR32(0x14, (MSK_RG_USB20_HSTX_SRCTRL << 12));
-	USBPHY_SET32(0x14, ((value & MSK_RG_USB20_HSTX_SRCTRL) << 12));
-
-	/* disable usb ring oscillator. */
-	USBPHY_CLR32(0x14, (0x1 << 15));
 }
 
 #ifdef CONFIG_MTK_UART_USB_SWITCH
@@ -498,51 +463,12 @@ void set_usb_phy_mode(int mode)
 		USBPHY_CLR32(0x6C, (0x10<<0));
 		USBPHY_SET32(0x6C, (0x2F<<0));
 		USBPHY_SET32(0x6C, (0x3F<<8));
-        if ((is_project(0x216AF)) || (is_project(0x216B0)) ||(is_project(0x216B1))) {
-		USBPHY_CLR32(OFFSET_RG_USB20_VRT_VREF_SEL, VAL_MAX_WIDTH_3 << SHFT_RG_USB20_VRT_VREF_SEL);
-		USBPHY_SET32(OFFSET_RG_USB20_VRT_VREF_SEL, 6 << SHFT_RG_USB20_VRT_VREF_SEL);
-		USBPHY_CLR32(OFFSET_RG_USB20_TERM_VREF_SEL, VAL_MAX_WIDTH_3 << SHFT_RG_USB20_TERM_VREF_SEL);
-		USBPHY_SET32(OFFSET_RG_USB20_TERM_VREF_SEL, 6 << SHFT_RG_USB20_TERM_VREF_SEL);
-		USBPHY_CLR32(OFFSET_RG_USB20_PHY_REV6, VAL_MAX_WIDTH_2 <<SHFT_RG_USB20_PHY_REV6);
-		USBPHY_SET32(OFFSET_RG_USB20_PHY_REV6, 3 <<SHFT_RG_USB20_PHY_REV6);
-        }
 		break;
 	case PHY_HOST_ACTIVE:
 	/* VBUSVALID=1, AVALID=1, BVALID=1, SESSEND=0, IDDIG=0, IDPULLUP=1 */
 		USBPHY_CLR32(0x6c, (0x12<<0));
 		USBPHY_SET32(0x6c, (0x2d<<0));
 		USBPHY_SET32(0x6c, (0x3f<<8));
-#ifdef OPLUS_FEATURE_CHG_BASIC
-	if (is_project(OPLUS_206AC)) {
-		USBPHY_CLR32(OFFSET_RG_USB20_VRT_VREF_SEL, VAL_MAX_WIDTH_3 << SHFT_RG_USB20_VRT_VREF_SEL);
-		USBPHY_SET32(OFFSET_RG_USB20_VRT_VREF_SEL, 5 << SHFT_RG_USB20_VRT_VREF_SEL);
-		USBPHY_CLR32(OFFSET_RG_USB20_TERM_VREF_SEL, VAL_MAX_WIDTH_3 << SHFT_RG_USB20_TERM_VREF_SEL);
-		USBPHY_SET32(OFFSET_RG_USB20_TERM_VREF_SEL, 5 << SHFT_RG_USB20_TERM_VREF_SEL);
-		USBPHY_CLR32(OFFSET_RG_USB20_PHY_REV6, VAL_MAX_WIDTH_2 <<SHFT_RG_USB20_PHY_REV6);
-		USBPHY_SET32(OFFSET_RG_USB20_PHY_REV6, 3 <<SHFT_RG_USB20_PHY_REV6);
-	} else if ((is_project(19747)) || (is_project(19741))) {
-		USBPHY_CLR32(OFFSET_RG_USB20_VRT_VREF_SEL, VAL_MAX_WIDTH_3 << SHFT_RG_USB20_VRT_VREF_SEL);
-		USBPHY_SET32(OFFSET_RG_USB20_VRT_VREF_SEL, 5 << SHFT_RG_USB20_VRT_VREF_SEL);
-		USBPHY_CLR32(OFFSET_RG_USB20_TERM_VREF_SEL, VAL_MAX_WIDTH_3 << SHFT_RG_USB20_TERM_VREF_SEL);
-		USBPHY_SET32(OFFSET_RG_USB20_TERM_VREF_SEL, 5 << SHFT_RG_USB20_TERM_VREF_SEL);
-		USBPHY_CLR32(OFFSET_RG_USB20_PHY_REV6, VAL_MAX_WIDTH_2 <<SHFT_RG_USB20_PHY_REV6);
-		USBPHY_SET32(OFFSET_RG_USB20_PHY_REV6, 2 <<SHFT_RG_USB20_PHY_REV6);
-	} else if ((is_project(0x216AF)) || (is_project(0x216B0)) ||(is_project(0x216B1))) {
-		USBPHY_CLR32(OFFSET_RG_USB20_VRT_VREF_SEL, VAL_MAX_WIDTH_3 << SHFT_RG_USB20_VRT_VREF_SEL);
-		USBPHY_SET32(OFFSET_RG_USB20_VRT_VREF_SEL, 6 << SHFT_RG_USB20_VRT_VREF_SEL);
-		USBPHY_CLR32(OFFSET_RG_USB20_TERM_VREF_SEL, VAL_MAX_WIDTH_3 << SHFT_RG_USB20_TERM_VREF_SEL);
-		USBPHY_SET32(OFFSET_RG_USB20_TERM_VREF_SEL, 6 << SHFT_RG_USB20_TERM_VREF_SEL);
-		USBPHY_CLR32(OFFSET_RG_USB20_PHY_REV6, VAL_MAX_WIDTH_2 <<SHFT_RG_USB20_PHY_REV6);
-		USBPHY_SET32(OFFSET_RG_USB20_PHY_REV6, 3 <<SHFT_RG_USB20_PHY_REV6);
-	} else {
-		USBPHY_CLR32(OFFSET_RG_USB20_VRT_VREF_SEL, VAL_MAX_WIDTH_3 << SHFT_RG_USB20_VRT_VREF_SEL);
-		USBPHY_SET32(OFFSET_RG_USB20_VRT_VREF_SEL, 5 << SHFT_RG_USB20_VRT_VREF_SEL);
-		USBPHY_CLR32(OFFSET_RG_USB20_TERM_VREF_SEL, VAL_MAX_WIDTH_3 << SHFT_RG_USB20_TERM_VREF_SEL);
-		USBPHY_SET32(OFFSET_RG_USB20_TERM_VREF_SEL, 5 << SHFT_RG_USB20_TERM_VREF_SEL);
-		USBPHY_CLR32(OFFSET_RG_USB20_PHY_REV6, VAL_MAX_WIDTH_2 <<SHFT_RG_USB20_PHY_REV6);
-		USBPHY_SET32(OFFSET_RG_USB20_PHY_REV6, 2 <<SHFT_RG_USB20_PHY_REV6);
-	}
-#endif /*OPLUS_FEATURE_CHG_BASIC*/
 		break;
 	case PHY_IDLE_MODE:
 	/* VBUSVALID=0, AVALID=0, BVALID=0, SESSEND=1, IDDIG=0, IDPULLUP=1 */
@@ -583,6 +509,13 @@ void usb_phy_poweron(void)
 #endif
 	/* wait 50 usec for PHY3.3v/1.8v stable. */
 	udelay(50);
+
+	USBPHY_SET32(0x68, (0x1 << 18));
+	USBPHY_CLR32(0x68, (0x1 << 3));
+	USBPHY_SET32(0x68, (0x1 << 3));
+	udelay(30);
+	USBPHY_CLR32(0x68, (0x1 << 18));
+	USBPHY_CLR32(0x68, (0x1 << 3));
 
 	/*
 	 * force_uart_en	1'b0		0x68 26
@@ -723,9 +656,15 @@ void usb_phy_recover(void)
 		return;
 	}
 #endif
-
 	/* wait 50 usec. */
 	udelay(50);
+
+	USBPHY_SET32(0x68, (0x1 << 18));
+	USBPHY_CLR32(0x68, (0x1 << 3));
+	USBPHY_SET32(0x68, (0x1 << 3));
+	udelay(30);
+	USBPHY_CLR32(0x68, (0x1 << 18));
+	USBPHY_CLR32(0x68, (0x1 << 3));
 
 	/*
 	 * 04.force_uart_en	1'b0 0x68 26
@@ -797,10 +736,8 @@ void usb_phy_recover(void)
 	/* force enter device mode */
 	set_usb_phy_mode(PHY_DEV_ACTIVE);
 
-	hs_slew_rate_cal();
-
 	/* M_ANALOG8[4:0] => RG_USB20_INTR_CAL[4:0] */
-	efuse_val = (get_devinfo_with_index(107) & (0x1f<<0)) >> 0;
+	efuse_val = (get_devinfo_with_index(108) & (0x1f<<0)) >> 0;
 	if (efuse_val) {
 		DBG(0, "apply efuse setting, RG_USB20_INTR_CAL=0x%x\n",
 			efuse_val);
@@ -812,52 +749,13 @@ void usb_phy_recover(void)
 	USBPHY_CLR32(0x18, (0xf0<<0));
 	USBPHY_SET32(0x18, (0x70<<0));
 
-	/* HQA special request */
-	{
-#ifdef OPLUS_FEATURE_CHG_BASIC
-	if (is_project(OPLUS_206AC)) {
-		USBPHY_CLR32(OFFSET_RG_USB20_VRT_VREF_SEL, VAL_MAX_WIDTH_3 << SHFT_RG_USB20_VRT_VREF_SEL);
-		USBPHY_SET32(OFFSET_RG_USB20_VRT_VREF_SEL, 7 << SHFT_RG_USB20_VRT_VREF_SEL);
-		USBPHY_CLR32(OFFSET_RG_USB20_TERM_VREF_SEL, VAL_MAX_WIDTH_3 << SHFT_RG_USB20_TERM_VREF_SEL);
-		USBPHY_SET32(OFFSET_RG_USB20_TERM_VREF_SEL, 7 << SHFT_RG_USB20_TERM_VREF_SEL);
-		USBPHY_CLR32(OFFSET_RG_USB20_PHY_REV6, VAL_MAX_WIDTH_2 <<SHFT_RG_USB20_PHY_REV6);
-		USBPHY_SET32(OFFSET_RG_USB20_PHY_REV6, 3 <<SHFT_RG_USB20_PHY_REV6);
-	} else if ((is_project(19747)) || (is_project(19741))){
-		USBPHY_CLR32(OFFSET_RG_USB20_VRT_VREF_SEL, VAL_MAX_WIDTH_3 << SHFT_RG_USB20_VRT_VREF_SEL);
-		USBPHY_SET32(OFFSET_RG_USB20_VRT_VREF_SEL, 6 << SHFT_RG_USB20_VRT_VREF_SEL);
-		USBPHY_CLR32(OFFSET_RG_USB20_TERM_VREF_SEL, VAL_MAX_WIDTH_3 << SHFT_RG_USB20_TERM_VREF_SEL);
-		USBPHY_SET32(OFFSET_RG_USB20_TERM_VREF_SEL, 6 << SHFT_RG_USB20_TERM_VREF_SEL);
-		USBPHY_CLR32(OFFSET_RG_USB20_PHY_REV6, VAL_MAX_WIDTH_2 <<SHFT_RG_USB20_PHY_REV6);
-		USBPHY_SET32(OFFSET_RG_USB20_PHY_REV6, 2 << SHFT_RG_USB20_PHY_REV6);
-	} else if ((is_project(0x216AF)) || (is_project(0x216B0)) ||(is_project(0x216B1))) {
-		USBPHY_CLR32(OFFSET_RG_USB20_VRT_VREF_SEL, VAL_MAX_WIDTH_3 << SHFT_RG_USB20_VRT_VREF_SEL);
-		USBPHY_SET32(OFFSET_RG_USB20_VRT_VREF_SEL, 6 << SHFT_RG_USB20_VRT_VREF_SEL);
-		USBPHY_CLR32(OFFSET_RG_USB20_TERM_VREF_SEL, VAL_MAX_WIDTH_3 << SHFT_RG_USB20_TERM_VREF_SEL);
-		USBPHY_SET32(OFFSET_RG_USB20_TERM_VREF_SEL, 6 << SHFT_RG_USB20_TERM_VREF_SEL);
-		USBPHY_CLR32(OFFSET_RG_USB20_PHY_REV6, VAL_MAX_WIDTH_2 <<SHFT_RG_USB20_PHY_REV6);
-		USBPHY_SET32(OFFSET_RG_USB20_PHY_REV6, 3 <<SHFT_RG_USB20_PHY_REV6);
-        } else {
-		USBPHY_CLR32(OFFSET_RG_USB20_VRT_VREF_SEL, VAL_MAX_WIDTH_3 << SHFT_RG_USB20_VRT_VREF_SEL);
-		USBPHY_SET32(OFFSET_RG_USB20_VRT_VREF_SEL, 6 << SHFT_RG_USB20_VRT_VREF_SEL);
-		USBPHY_CLR32(OFFSET_RG_USB20_TERM_VREF_SEL, VAL_MAX_WIDTH_3 << SHFT_RG_USB20_TERM_VREF_SEL);
-		USBPHY_SET32(OFFSET_RG_USB20_TERM_VREF_SEL, 6 << SHFT_RG_USB20_TERM_VREF_SEL);
-		USBPHY_CLR32(OFFSET_RG_USB20_PHY_REV6, VAL_MAX_WIDTH_2 <<SHFT_RG_USB20_PHY_REV6);
-		USBPHY_SET32(OFFSET_RG_USB20_PHY_REV6, 2 << SHFT_RG_USB20_PHY_REV6);
-	}
-#else
-		USBPHY_CLR32(OFFSET_RG_USB20_VRT_VREF_SEL,
-				VAL_MAX_WIDTH_3 << SHFT_RG_USB20_VRT_VREF_SEL);
-		USBPHY_SET32(OFFSET_RG_USB20_VRT_VREF_SEL,
-				5 << SHFT_RG_USB20_VRT_VREF_SEL);
+	/* HQA Request comes from SA */
+	USBPHY_CLR32(0x18, (0x1<<28));
+	USBPHY_CLR32(0x18, (0xf<<0));
+	USBPHY_SET32(0x18, (0x2<<0));
 
-		USBPHY_CLR32(OFFSET_RG_USB20_TERM_VREF_SEL,
-				VAL_MAX_WIDTH_3 << SHFT_RG_USB20_TERM_VREF_SEL);
-		USBPHY_SET32(OFFSET_RG_USB20_TERM_VREF_SEL,
-				5 << SHFT_RG_USB20_TERM_VREF_SEL);
-#endif /*OPLUS_FEATURE_CHG_BASIC*/
+	USBPHY_SET32(0x8,  (0x1<<3));
 
-		/* discth = 7, u2_enhance = 1 already in */
-	}
 
 	usb_phy_tuning();
 
@@ -925,4 +823,27 @@ void usb_phy_context_restore(void)
 #endif
 }
 
+void usb_dpdm_pulldown(bool enable)
+{
+	DBG(0, "%s: enable=%d\n", __func__, enable);
+	usb_prepare_enable_clock(true);
+
+	/* wait 50 usec. */
+	udelay(50);
+	if (enable) {
+		/* RG_DPPULLDOWN, 1'b1, RG_DMPULLDOWN, 1'b1 */
+		USBPHY_SET32(0x68, (0x1 << 6) | (0x1 << 7));
+		/* RG_USB20_PHY_REV */
+		USBPHY_CLR32(0x18, (0x2 << 24));
+	} else {
+		/* RG_DPPULLDOWN, 1'b0, RG_DMPULLDOWN, 1'b0 */
+		USBPHY_CLR32(0x68, (0x1 << 6) | (0x1 << 7));
+		/* RG_USB20_PHY_REV */
+		USBPHY_SET32(0x18, (0x2 << 24));
+	}
+
+	usb_prepare_enable_clock(false);
+
+	DBG(0, "%s\n", __func__);
+}
 #endif
