@@ -54,6 +54,11 @@
 #ifdef CONFIG_MTK_CPU_KORO
 #include <mtk_koro.h>
 #endif
+#ifdef OPLUS_BUG_STABILITY
+/* Bin.Li@EXP.BSP.bootloader.bootflow, 2017/05/24, Add for interface reboot reason */
+#include <mt-plat/mtk_rtc.h>
+extern int is_kernel_panic;
+#endif
 
 void __iomem *toprgu_base;
 int	wdt_irq_id;
@@ -595,6 +600,13 @@ void wdt_arch_reset(char mode)
 	unsigned int non_rst2 = 0;
 
 	pr_debug("%s: mode=0x%x\n", __func__, mode);
+
+#ifdef OPLUS_BUG_STABILITY
+	if(is_kernel_panic)
+	{
+	oppo_rtc_mark_reboot_kernel();
+	}
+#endif
 
 	for_each_matching_node(np_rgu, rgu_of_match) {
 		pr_info("%s: compatible node found: %s\n",
