@@ -147,60 +147,41 @@ void msdc_dump_ldo_sts(char **buff, unsigned long *size,
 {
 #if !defined(CONFIG_MTK_MSDC_BRING_UP_BYPASS) \
 	|| defined(MTK_MSDC_BRINGUP_DEBUG)
-	u32 ldo_en = 0, vm_mode = 0;
-	u32 ldo_vol[2] = {0}, ldo_cal[2] = {0};
+	u32 ldo_en = 0, ldo_vol = 0, ldo_cal = 0;
 	u32 id = host->id;
 
 	switch (id) {
 	case 0:
-		/*
-		 * 6359p provide two groups of VOSEL and VOCAL
-		 * when ufs3.0 used,you need to check VOSEL_1,
-		 * or you need to check VOSEL_0
-		 * you can identify the right VOSEL by checking VM_MODE
-		 * VM_MODE=1 <-->VOSEL_1
-		 * VM_MODE=0 <-->VOSEL_0
-		 */
 		pmic_read_interface_nolock(REG_VEMC_EN, &ldo_en, MASK_VEMC_EN,
 			SHIFT_VEMC_EN);
-		pmic_read_interface_nolock(PMIC_RG_VEMC_VOSEL_0_ADDR,
-			&ldo_vol[0],
-			PMIC_RG_VEMC_VOSEL_0_MASK, PMIC_RG_VEMC_VOSEL_0_SHIFT);
-		pmic_read_interface_nolock(PMIC_RG_VEMC_VOCAL_0_ADDR,
-			&ldo_cal[0],
-			PMIC_RG_VEMC_VOCAL_0_MASK, PMIC_RG_VEMC_VOCAL_0_SHIFT);
-		pmic_read_interface_nolock(PMIC_RG_VEMC_VOSEL_1_ADDR,
-			&ldo_vol[1],
-			PMIC_RG_VEMC_VOSEL_1_MASK, PMIC_RG_VEMC_VOSEL_1_SHIFT);
-		pmic_read_interface_nolock(PMIC_RG_VEMC_VOCAL_1_ADDR,
-			&ldo_cal[1],
-			PMIC_RG_VEMC_VOCAL_1_MASK, PMIC_RG_VEMC_VOCAL_1_SHIFT);
-		pmic_read_interface_nolock(PMIC_VM_MODE_ADDR,
-			&vm_mode,
-			PMIC_VM_MODE_MASK, PMIC_VM_MODE_SHIFT);
+		pmic_read_interface_nolock(REG_VEMC_VOSEL, &ldo_vol,
+			MASK_VEMC_VOSEL, SHIFT_VEMC_VOSEL);
+		pmic_read_interface_nolock(REG_VEMC_VOCAL, &ldo_cal,
+			MASK_VEMC_VOCAL, SHIFT_VEMC_VOCAL);
 		SPREAD_PRINTF(buff, size, m,
-			" VEMC_EN=0x%x, VM_MODE=%d, VEMC_VOL=0:0x%x 1:0x%x [4b'1011(3V)], VEMC_CAL=0:0x%x 1:0x%x\n",
-			ldo_en, vm_mode, ldo_vol[0],
-			ldo_vol[1], ldo_cal[0], ldo_cal[1]);
+			" VEMC_EN=0x%x, VEMC_VOL=0x%x [3b'011(3V)], VEMC_CAL=0x%x\n",
+			ldo_en, ldo_vol, ldo_cal);
 		break;
 	case 1:
-		/*
-		 * 6360 only provide regulator APIs with mutex protection.
-		 * Therefore, can not dump msdc1 ldo status in IRQ context.
-		 * Enable dump msdc1 if you make sure the dump context
-		 * is correct.
-		 */
-		#if 0
+		pmic_read_interface_nolock(REG_VMC_EN, &ldo_en, MASK_VMC_EN,
+			SHIFT_VMC_EN);
+		pmic_read_interface_nolock(REG_VMC_VOSEL, &ldo_vol,
+			MASK_VMC_VOSEL, SHIFT_VMC_VOSEL);
+		pmic_read_interface_nolock(REG_VMC_VOCAL, &ldo_cal,
+			MASK_VMC_VOCAL, SHIFT_VMC_VOCAL);
 		SPREAD_PRINTF(buff, size, m,
-		" VMCH_EN=0x%x, VMCH_VOL=0x%x\n",
-			regulator_is_enabled(host->mmc->supply.vmmc),
-			regulator_get_voltage(host->mmc->supply.vmmc));
+			" VMC_EN=0x%x, VMC_VOL=0x%x [4b'1011(3V)], VMC_CAL=0x%x\n",
+			ldo_en, ldo_vol, ldo_cal);
+		pmic_read_interface_nolock(REG_VMCH_EN, &ldo_en, MASK_VMCH_EN,
+			SHIFT_VMCH_EN);
+		pmic_read_interface_nolock(REG_VMCH_VOSEL, &ldo_vol,
+			MASK_VMCH_VOSEL, SHIFT_VMCH_VOSEL);
+		pmic_read_interface_nolock(REG_VMCH_VOCAL, &ldo_cal,
+			MASK_VMCH_VOCAL, SHIFT_VMCH_VOCAL);
 		SPREAD_PRINTF(buff, size, m,
-		" VMC_EN=0x%x, VMC_VOL=0x%x\n",
-			regulator_is_enabled(host->mmc->supply.vqmmc),
-			regulator_get_voltage(host->mmc->supply.vqmmc));
+			" VMCH_EN=0x%x, VMC_VOL=0x%x [3b'011(3V)], VMCH_CAL=0x%x\n",
+			ldo_en, ldo_vol, ldo_cal);
 		break;
-		#endif
 	default:
 		break;
 	}
@@ -277,6 +258,13 @@ void msdc_emmc_power(struct msdc_host *host, u32 on)
 #endif
 }
 
+struct reg_oc_msdc {
+	struct notifier_block nb;
+	struct work_struct work;
+	int reg_status;	/* 1 for register already and 0 for other case */
+};
+
+static struct reg_oc_msdc sd_oc;
 void msdc_sd_power(struct msdc_host *host, u32 on)
 {
 #if !defined(CONFIG_MTK_MSDC_BRING_UP_BYPASS)
@@ -310,6 +298,15 @@ void msdc_sd_power(struct msdc_host *host, u32 on)
 #endif
 		}
 
+		/* Disable VMCH/VMC OC */
+		if (!card_on && sd_oc.reg_status) {
+			devm_regulator_unregister_notifier(
+				host->mmc->supply.vmmc, &sd_oc.nb);
+			devm_regulator_unregister_notifier(
+				host->mmc->supply.vqmmc, &sd_oc.nb);
+			sd_oc.reg_status = 0;
+		}
+
 		/* VMCH VOLSEL */
 		msdc_ldo_power(card_on, host->mmc->supply.vmmc, VOL_3000,
 			&host->power_flash);
@@ -322,6 +319,16 @@ void msdc_sd_power(struct msdc_host *host, u32 on)
 		msdc_ldo_power(on, host->mmc->supply.vqmmc, VOL_3000,
 			&host->power_io);
 #endif
+
+		/* Enable VMCH/VMC OC */
+		if (card_on && !sd_oc.reg_status) {
+			mdelay(3);
+			devm_regulator_register_notifier(
+				host->mmc->supply.vmmc, &sd_oc.nb);
+			devm_regulator_register_notifier(
+				host->mmc->supply.vqmmc, &sd_oc.nb);
+			sd_oc.reg_status = 1;
+		}
 
 		pr_info("msdc%d power %s\n", host->id, (on ? "on" : "off"));
 		break;
@@ -343,7 +350,7 @@ static int msdc_sd_event(struct notifier_block *nb,
 	switch (event) {
 	case REGULATOR_EVENT_OVER_CURRENT:
 	case REGULATOR_EVENT_FAIL:
-		msdc_sd_power_off();
+		schedule_work(&sd_oc.work);
 		break;
 	default:
 		break;
@@ -351,6 +358,12 @@ static int msdc_sd_event(struct notifier_block *nb,
 #endif
 	return NOTIFY_OK;
 }
+
+static void sdcard_oc_handler(struct work_struct *work)
+{
+	msdc_sd_power_off();
+}
+
 void msdc_sd_power_off(void)
 {
 #if !defined(CONFIG_MTK_MSDC_BRING_UP_BYPASS)
@@ -610,7 +623,7 @@ int msdc_get_ccf_clk_pointer(struct platform_device *pdev,
 	}
 #endif
 
-	pr_info("[msdc%d] src_hclk_ctl:%p, hclk:%p, clk_ctl:%p, hclk_ctl:%p\n",
+	pr_info("[msdc%d] src_hclk_ctl:%p, hclk:%u, clk_ctl:%p, hclk_ctl:%p\n",
 		pdev->id, host->src_hclk_ctl, host->hclk,
 		host->clk_ctl, host->hclk_ctl);
 
@@ -626,34 +639,33 @@ static void msdc_dump_clock_sts_core(char **buff, unsigned long *size,
 
 	if (topckgen_base && infracfg_ao_base) {
 		buf_ptr += sprintf(buf_ptr,
-			"MSDC0 HCLK_MUX[0x%p][25:24]=%d, pdn=%d\n",
-			topckgen_base + 0x070,
-			/* mux at bits 25~24 */
-			(MSDC_READ32(topckgen_base + 0x070) >> 24) & 3,
-			/* pdn at bit 31 */
-			(MSDC_READ32(topckgen_base + 0x070) >> 31) & 1);
-		buf_ptr += sprintf(buf_ptr,
-			"MSDC0 CLK_MUX[%p][2:0]=%d, pdn=%d, CLK_CG[%p]bit 2,6=%d,%d\n",
-			topckgen_base + 0x080,
-			/* mux at bits 2~0 */
-			(MSDC_READ32(topckgen_base + 0x080) >> 0) & 7,
+			"MSDC0 HCLK_MUX[0x%p][1:0]=%d, pdn=%d\n", topckgen_base + 0x070,
+			/* mux at bits 1~0 */
+			(MSDC_READ32(topckgen_base + 0x070) >> 0) & 3,
 			/* pdn at bit 7 */
-			(MSDC_READ32(topckgen_base + 0x080) >> 7) & 1,
-			infracfg_ao_base + 0x094,
-			/* cg at bit 2,6 */
-			(MSDC_READ32(infracfg_ao_base + 0x094) >> 2) & 1,
-			(MSDC_READ32(infracfg_ao_base + 0x094) >> 6) & 1);
+			(MSDC_READ32(topckgen_base + 0x070) >> 7) & 1);
 		buf_ptr += sprintf(buf_ptr,
-			"MSDC1 CLK_MUX[%p][10:8]=%d, pdn=%d, CLK_CG[%p]bit 4,16=%d,%d\n",
-			topckgen_base + 0x080,
+			"MSDC0 CLK_MUX[%p][2:0]=%d, pdn=%d, CLK_CG[%p]bit 2,9=%d,%d\n",
+			topckgen_base + 0x070,
 			/* mux at bits 10~8 */
-			(MSDC_READ32(topckgen_base + 0x080) >> 8) & 7,
+			(MSDC_READ32(topckgen_base + 0x070) >> 8) & 7,
 			/* pdn at bit 15 */
-			(MSDC_READ32(topckgen_base + 0x080) >> 15) & 1,
+			(MSDC_READ32(topckgen_base + 0x070) >> 15) & 1,
 			infracfg_ao_base + 0x094,
-			/* cg at bit 4,16 */
+			/* cg at bit 2,9 */
+			(MSDC_READ32(infracfg_ao_base + 0x094) >> 2) & 1,
+			(MSDC_READ32(infracfg_ao_base + 0x0c8) >> 9) & 1);
+		buf_ptr += sprintf(buf_ptr,
+			"MSDC1 CLK_MUX[%p][10:8]=%d, pdn=%d, CLK_CG[%p]bit 4,10=%d,%d\n",
+			topckgen_base + 0x070,
+			/* mux at bits 18~16 */
+			(MSDC_READ32(topckgen_base + 0x070) >> 16) & 7,
+			/* pdn at bit 23 */
+			(MSDC_READ32(topckgen_base + 0x070) >> 23) & 1,
+			infracfg_ao_base + 0x094,
+			/* cg at bit 4,10 */
 			(MSDC_READ32(infracfg_ao_base + 0x094) >> 4) & 1,
-			(MSDC_READ32(infracfg_ao_base + 0x094) >> 16) & 1);
+			(MSDC_READ32(infracfg_ao_base + 0x0c8) >> 10) & 1);
 
 		*buf_ptr = '\0';
 		SPREAD_PRINTF(buff, size, m, "%s", buffer);
@@ -855,187 +867,127 @@ void msdc_dump_padctl_by_id(char **buff, unsigned long *size,
 
 	if (id == 0) {
 		SPREAD_PRINTF(buff, size, m,
-			"MSDC0 MODE8 [0x%p] =0x%8x\tshould: 0x1111111?\n",
+			"MSDC0 MODE8 [0x%p] =0x%8x\tshould: 0x1111????\n",
 			MSDC0_GPIO_MODE8, MSDC_READ32(MSDC0_GPIO_MODE8));
 		SPREAD_PRINTF(buff, size, m,
-			"MSDC0 MODE9 [0x%p] =0x%8x\tshould: 0x???11111\n",
+			"MSDC0 MODE9 [0x%p] =0x%8x\tshould: 0x11111111\n",
 			MSDC0_GPIO_MODE9, MSDC_READ32(MSDC0_GPIO_MODE9));
 		SPREAD_PRINTF(buff, size, m,
-			"MSDC0 IES    [0x%p] =0x%8x\tshould: 0x???1FFE?\n",
-			MSDC0_GPIO_IES, MSDC_READ32(MSDC0_GPIO_IES));
+			"MSDC0 IES    [0x%p] =0x%8x\tshould: 0x?????FFF\n",
+			MSDC0_GPIO_IES_CFG0, MSDC_READ32(MSDC0_GPIO_IES_CFG0));
 		SPREAD_PRINTF(buff, size, m,
-			"MSDC0 SMT    [0x%p] =0x%8x\tshould: 0x????3FFC\n",
-			MSDC0_GPIO_SMT, MSDC_READ32(MSDC0_GPIO_SMT));
+			"MSDC0 SMT    [0x%p] =0x%8x\tshould: 0x?????FFF\n",
+			MSDC0_GPIO_SMT_CFG0, MSDC_READ32(MSDC0_GPIO_SMT_CFG0));
 		SPREAD_PRINTF(buff, size, m,
 			"MSDC0 TDSEL0 [0x%p] =0x%8x, [0x%p] =0x%8x\n",
-			MSDC0_GPIO_TDSEL0_0,
-			MSDC_READ32(MSDC0_GPIO_TDSEL0_0),
-			MSDC0_GPIO_TDSEL0_1,
-			MSDC_READ32(MSDC0_GPIO_TDSEL0_1));
+			MSDC0_GPIO_TDSEL_CFG0,
+			MSDC_READ32(MSDC0_GPIO_TDSEL_CFG0),
+			MSDC0_GPIO_TDSEL_CFG1,
+			MSDC_READ32(MSDC0_GPIO_TDSEL_CFG1));
 		SPREAD_PRINTF(buff, size, m,
 			"MSDC0 RDSEL0 [0x%p] =0x%8x, [0x%p] = 0x%8x, [0x%p] = 0x%8x\n",
-			MSDC0_GPIO_RDSEL0_0,
-			MSDC_READ32(MSDC0_GPIO_RDSEL0_0),
-			MSDC0_GPIO_RDSEL0_1,
-			MSDC_READ32(MSDC0_GPIO_RDSEL0_1),
-			MSDC0_GPIO_RDSEL0_2,
-			MSDC_READ32(MSDC0_GPIO_RDSEL0_2));
+			MSDC0_GPIO_RDSEL_CFG0,
+			MSDC_READ32(MSDC0_GPIO_RDSEL_CFG0),
+			MSDC0_GPIO_RDSEL_CFG1,
+			MSDC_READ32(MSDC0_GPIO_RDSEL_CFG1),
+			MSDC0_GPIO_RDSEL_CFG2,
+			MSDC_READ32(MSDC0_GPIO_RDSEL_CFG2));
 		SPREAD_PRINTF(buff, size, m,
 			"MSDC0 DRV0   [0x%p] =0x%8x, [0x%p] =0x%8x\n",
-			MSDC0_GPIO_DRV0_0,
-			MSDC_READ32(MSDC0_GPIO_DRV0_0),
-			MSDC0_GPIO_DRV0_1,
-			MSDC_READ32(MSDC0_GPIO_DRV0_1));
+			MSDC0_GPIO_DRV_CFG0,
+			MSDC_READ32(MSDC0_GPIO_DRV_CFG0),
+			MSDC0_GPIO_DRV_CFG1,
+			MSDC_READ32(MSDC0_GPIO_DRV_CFG1));
 		SPREAD_PRINTF(buff, size, m,
 			"PUPD/R1/R0: dat/cmd:0/0/1, clk/dst: 1/1/0\n");
 		SPREAD_PRINTF(buff, size, m,
 			"MSDC0 PUPD0  [0x%p] =0x%8x\tshould: 0x?????401\n",
-			MSDC0_GPIO_PUPD0,
-			MSDC_READ32(MSDC0_GPIO_PUPD0));
+			MSDC0_GPIO_PUPD_CFG0,
+			MSDC_READ32(MSDC0_GPIO_PUPD_CFG0));
 		SPREAD_PRINTF(buff, size, m,
 			"MSDC0 R0  [0x%p] =0x%8x\tshould: 0x?????BFE\n",
-			MSDC0_GPIO_R0,
-			MSDC_READ32(MSDC0_GPIO_R0));
+			MSDC0_GPIO_R0_CFG0,
+			MSDC_READ32(MSDC0_GPIO_R0_CFG0));
 		SPREAD_PRINTF(buff, size, m,
 			"MSDC0 R1  [0x%p] =0x%8x\tshould: 0x?????401\n",
-			MSDC0_GPIO_R1,
-			MSDC_READ32(MSDC0_GPIO_R1));
+			MSDC0_GPIO_R1_CFG0,
+			MSDC_READ32(MSDC0_GPIO_R1_CFG0));
 	} else if (id == 1) {
-#ifndef SD_GPIO_PAD_A_EN
 		SPREAD_PRINTF(buff, size, m,
-			"MSDC1 MODE15  [0x%p] =0x%8x\tshould: 0x111?????\n",
-			MSDC1_GPIO_MODE15, MSDC_READ32(MSDC1_GPIO_MODE15));
+			"MSDC1 MODE10  [0x%p] =0x%8x\tshould: 0x111?????\n",
+			MSDC1_GPIO_MODE10, MSDC_READ32(MSDC1_GPIO_MODE10));
 		SPREAD_PRINTF(buff, size, m,
-			"MSDC1 MODE16  [0x%p] =0x%8x\tshould: 0x?????111\n",
-			MSDC1_GPIO_MODE16, MSDC_READ32(MSDC1_GPIO_MODE16));
+			"MSDC1 MODE11  [0x%p] =0x%8x\tshould: 0x?????111\n",
+			MSDC1_GPIO_MODE11, MSDC_READ32(MSDC1_GPIO_MODE11));
 		SPREAD_PRINTF(buff, size, m,
 			"MSDC1 IES    [0x%p] =0x%8x\t  5-0bits should: 2b111111\n",
-			MSDC1_GPIO_IES, MSDC_READ32(MSDC1_GPIO_IES));
+			MSDC1_GPIO_IES_CFG0, MSDC_READ32(MSDC1_GPIO_IES_CFG0));
 		SPREAD_PRINTF(buff, size, m,
 			"MSDC1 SMT    [0x%p] =0x%8x\t  5-0bits should: 2b111111\n",
-			MSDC1_GPIO_SMT, MSDC_READ32(MSDC1_GPIO_SMT));
+			MSDC1_GPIO_SMT_CFG0, MSDC_READ32(MSDC1_GPIO_SMT_CFG0));
 		SPREAD_PRINTF(buff, size, m,
 			"MSDC1 TDSEL0 [0x%p] =0x%8x\n",
-			MSDC1_GPIO_TDSEL0,
-			MSDC_READ32(MSDC1_GPIO_TDSEL0));
+			MSDC1_GPIO_TDSEL_CFG0,
+			MSDC_READ32(MSDC1_GPIO_TDSEL_CFG0));
 		SPREAD_PRINTF(buff, size, m,
 			"should 1.8v: sleep: TBD, awake: TBD\n");
 		SPREAD_PRINTF(buff, size, m,
 			"MSDC1 RDSEL0 [0x%p] =0x%8x, [0x%p] =0x%8x\n",
-			MSDC1_GPIO_RDSEL0_0,
-			MSDC_READ32(MSDC1_GPIO_RDSEL0_0),
-			MSDC1_GPIO_RDSEL0_1,
-			MSDC_READ32(MSDC1_GPIO_RDSEL0_1));
+			MSDC1_GPIO_RDSEL_CFG0,
+			MSDC_READ32(MSDC1_GPIO_RDSEL_CFG0),
+			MSDC1_GPIO_RDSEL_CFG1,
+			MSDC_READ32(MSDC1_GPIO_RDSEL_CFG1));
 		SPREAD_PRINTF(buff, size, m,
 			"1.8V: TBD, 2.9v: TBD\n");
 		SPREAD_PRINTF(buff, size, m,
 			"MSDC1 DRV0   [0x%p] =0x%8x\n",
-			MSDC1_GPIO_DRV0,
-			MSDC_READ32(MSDC1_GPIO_DRV0));
+			MSDC1_GPIO_DRV_CFG0,
+			MSDC_READ32(MSDC1_GPIO_DRV_CFG0));
 		SPREAD_PRINTF(buff, size, m,
 			"MSDC1 PUPD0  [0x%p] =0x%8x\tshould: 0x??????01\n",
-			MSDC1_GPIO_PUPD0,
-			MSDC_READ32(MSDC1_GPIO_PUPD0));
+			MSDC1_GPIO_PUPD_CFG0,
+			MSDC_READ32(MSDC1_GPIO_PUPD_CFG0));
 		SPREAD_PRINTF(buff, size, m,
 			"MSDC1 R0  [0x%p] =0x%8x\tshould: 0x??????00\n",
-			MSDC1_GPIO_R0,
-			MSDC_READ32(MSDC1_GPIO_R0));
+			MSDC1_GPIO_R0_CFG0,
+			MSDC_READ32(MSDC1_GPIO_R0_CFG0));
 		SPREAD_PRINTF(buff, size, m,
 			"MSDC1 R1  [0x%p] =0x%8x\tshould: 0x??????3F\n",
-			MSDC1_GPIO_R1,
-			MSDC_READ32(MSDC1_GPIO_R1));
-#else
-		SPREAD_PRINTF(buff, size, m,
-			"MSDC1_A_GPIO_MISC  [0x%p] =0x%8x\tshould: bit[9]=1\n",
-			MSDC1_GPIO_MISC, MSDC_READ32(MSDC1_GPIO_MISC));
-		SPREAD_PRINTF(buff, size, m,
-			"MSDC1_A MODE1  [0x%p] =0x%8x\tshould: 0x111111??\n",
-			MSDC1_GPIO_MODE1, MSDC_READ32(MSDC1_GPIO_MODE1));
-		SPREAD_PRINTF(buff, size, m,
-			"MSDC1_A IES	  [0x%p] =0x%8x\tshould: 0x????7E??\n",
-		MSDC1_GPIO_IES_A, MSDC_READ32(MSDC1_GPIO_IES_A));
-		SPREAD_PRINTF(buff, size, m,
-			"MSDC1_A SMT	  [0x%p] =0x%8x\tshould: 0x??????1?\n",
-		MSDC1_GPIO_SMT_A, MSDC_READ32(MSDC1_GPIO_SMT_A));
-		SPREAD_PRINTF(buff, size, m,
-			"MSDC1_A TDSEL0 [0x%p] =0x%8x\n",
-			MSDC1_GPIO_TDSEL0_A,
-			MSDC_READ32(MSDC1_GPIO_TDSEL0_A));
-		SPREAD_PRINTF(buff, size, m,
-			"should 1.8v: sleep: TBD, awake: TBD\n");
-		SPREAD_PRINTF(buff, size, m,
-			"MSDC1_A RDSEL0 [0x%p] =0x%8x\n",
-			MSDC1_GPIO_RDSEL0_A,
-			MSDC_READ32(MSDC1_GPIO_RDSEL0_A));
-		SPREAD_PRINTF(buff, size, m,
-			"1.8V: TBD, 2.9v: TBD\n");
-		SPREAD_PRINTF(buff, size, m,
-			"MSDC1_A DRV0   [0x%p] =0x%8x\n",
-			MSDC1_GPIO_DRV0_A,
-			MSDC_READ32(MSDC1_GPIO_DRV0_A));
-		SPREAD_PRINTF(buff, size, m,
-			"MSDC1_A PUPD0  [0x%p] =0x%8x\tshould: 0x??????01\n",
-			MSDC1_GPIO_PUPD0_A,
-			MSDC_READ32(MSDC1_GPIO_PUPD0_A));
-		SPREAD_PRINTF(buff, size, m,
-			"MSDC1_A R0  [0x%p] =0x%8x\tshould: 0x??????00\n",
-			MSDC1_GPIO_R0_A,
-			MSDC_READ32(MSDC1_GPIO_R0_A));
-
-		SPREAD_PRINTF(buff, size, m,
-			"MSDC1_A R1  [0x%p] =0x%8x\tshould: 0x??????3F\n",
-			MSDC1_GPIO_R1_A,
-			MSDC_READ32(MSDC1_GPIO_R1_A));
-#endif
-
+			MSDC1_GPIO_R1_CFG0,
+			MSDC_READ32(MSDC1_GPIO_R1_CFG0));
 	}
 }
 
 void msdc_set_pin_mode(struct msdc_host *host)
 {
 	if (host->id == 0) {
-		MSDC_SET_FIELD(MSDC0_GPIO_MODE8, 0xFFFFFFF0, 0x1111111);
-		MSDC_SET_FIELD(MSDC0_GPIO_MODE9, 0x000FFFFF, 0x11111);
+		MSDC_SET_FIELD(MSDC0_GPIO_MODE8, 0xFFFF0000, 0x1111);
+		MSDC_SET_FIELD(MSDC0_GPIO_MODE9, 0xFFFFFFFF, 0x11111111);
 	} else if (host->id == 1) {
-#ifndef SD_GPIO_PAD_A_EN
-		MSDC_SET_FIELD(MSDC1_GPIO_MODE15, 0xFFF00000, 0x111);
-		MSDC_SET_FIELD(MSDC1_GPIO_MODE16, 0x00000FFF, 0x111);
-#else
-		MSDC_SET_FIELD(MSDC1_GPIO_MISC, MSDC1_PIN_MUX_SEL_MASK_A, 0x1);
-		MSDC_SET_FIELD(MSDC1_GPIO_MODE1, 0xFFFFFF00, 0x111111);
-#endif
+		MSDC_SET_FIELD(MSDC1_GPIO_MODE10, 0xFFF00000, 0x111);
+		MSDC_SET_FIELD(MSDC1_GPIO_MODE11, 0x00000FFF, 0x111);
 	}
 }
 
 void msdc_set_ies_by_id(u32 id, int set_ies)
 {
 	if (id == 0) {
-		MSDC_SET_FIELD(MSDC0_GPIO_IES, MSDC0_IES_ALL_MASK,
-			(set_ies ? 0x7FF : 0));
+		MSDC_SET_FIELD(MSDC0_GPIO_IES_CFG0, MSDC0_IES_ALL_MASK,
+			(set_ies ? 0xFFF : 0));
 	} else if (id == 1) {
-#ifndef SD_GPIO_PAD_A_EN
-		MSDC_SET_FIELD(MSDC1_GPIO_IES, MSDC1_IES_ALL_MASK,
+		MSDC_SET_FIELD(MSDC1_GPIO_IES_CFG0, MSDC1_IES_ALL_MASK,
 			(set_ies ? 0x3F : 0));
-#else
-		MSDC_SET_FIELD(MSDC1_GPIO_IES_A, MSDC1_IES_ALL_MASK_A,
-			(set_ies ? 0x3F : 0));
-#endif
 	}
 }
 
 void msdc_set_smt_by_id(u32 id, int set_smt)
 {
 	if (id == 0) {
-		MSDC_SET_FIELD(MSDC0_GPIO_SMT, MSDC0_SMT_ALL_MASK,
-			(set_smt ? 0x7FF : 0));
+		MSDC_SET_FIELD(MSDC0_GPIO_SMT_CFG0, MSDC0_SMT_ALL_MASK,
+			(set_smt ? 0xFFF : 0));
 	} else if (id == 1) {
-#ifndef SD_GPIO_PAD_A_EN
-		MSDC_SET_FIELD(MSDC1_GPIO_SMT, MSDC1_SMT_ALL_MASK,
+		MSDC_SET_FIELD(MSDC1_GPIO_SMT_CFG0, MSDC1_SMT_ALL_MASK,
 			(set_smt ? 0x3F : 0));
-#else
-		MSDC_SET_FIELD(MSDC1_GPIO_SMT_A, MSDC1_SMT_ALL_MASK_A,
-			(set_smt ? 0x3F : 0));
-#endif
 	}
 }
 
@@ -1048,54 +1000,47 @@ void msdc_set_tdsel_by_id(u32 id, u32 flag, u32 value)
 			cust_val = value;
 		else
 			cust_val = 0;
-		MSDC_SET_FIELD(MSDC0_GPIO_TDSEL0_0, MSDC0_TDSEL0_CMD_MASK,
+		MSDC_SET_FIELD(MSDC0_GPIO_TDSEL_CFG0, MSDC0_TDSEL_CLK_MASK,
 			cust_val);
-		MSDC_SET_FIELD(MSDC0_GPIO_TDSEL0_0, MSDC0_TDSEL0_DAT0_MASK,
+		MSDC_SET_FIELD(MSDC0_GPIO_TDSEL_CFG0, MSDC0_TDSEL_CMD_MASK,
 			cust_val);
-		MSDC_SET_FIELD(MSDC0_GPIO_TDSEL0_0, MSDC0_TDSEL0_DAT1_MASK,
+		MSDC_SET_FIELD(MSDC0_GPIO_TDSEL_CFG0, MSDC0_TDSEL_DAT0_MASK,
 			cust_val);
-		MSDC_SET_FIELD(MSDC0_GPIO_TDSEL0_0, MSDC0_TDSEL0_DAT2_MASK,
+		MSDC_SET_FIELD(MSDC0_GPIO_TDSEL_CFG0, MSDC0_TDSEL_DAT1_MASK,
 			cust_val);
-		MSDC_SET_FIELD(MSDC0_GPIO_TDSEL0_0, MSDC0_TDSEL0_DAT3_MASK,
+		MSDC_SET_FIELD(MSDC0_GPIO_TDSEL_CFG0, MSDC0_TDSEL_DAT2_MASK,
 			cust_val);
-		MSDC_SET_FIELD(MSDC0_GPIO_TDSEL0_1, MSDC0_TDSEL0_DAT4_MASK,
+		MSDC_SET_FIELD(MSDC0_GPIO_TDSEL_CFG0, MSDC0_TDSEL_DAT3_MASK,
 			cust_val);
-		MSDC_SET_FIELD(MSDC0_GPIO_TDSEL0_1, MSDC0_TDSEL0_DAT5_MASK,
+		MSDC_SET_FIELD(MSDC0_GPIO_TDSEL_CFG0, MSDC0_TDSEL_DAT4_MASK,
 			cust_val);
-		MSDC_SET_FIELD(MSDC0_GPIO_TDSEL0_1, MSDC0_TDSEL0_DAT6_MASK,
+		MSDC_SET_FIELD(MSDC0_GPIO_TDSEL_CFG0, MSDC0_TDSEL_DAT5_MASK,
 			cust_val);
-		MSDC_SET_FIELD(MSDC0_GPIO_TDSEL0_1, MSDC0_TDSEL0_DAT7_MASK,
+		MSDC_SET_FIELD(MSDC0_GPIO_TDSEL_CFG1, MSDC0_TDSEL_DAT6_MASK,
 			cust_val);
-		MSDC_SET_FIELD(MSDC0_GPIO_TDSEL0_0, MSDC0_TDSEL0_CLK_MASK,
+		MSDC_SET_FIELD(MSDC0_GPIO_TDSEL_CFG1, MSDC0_TDSEL_DAT7_MASK,
 			cust_val);
-		MSDC_SET_FIELD(MSDC0_GPIO_TDSEL0_1, MSDC0_TDSEL0_DSL_MASK,
+		MSDC_SET_FIELD(MSDC0_GPIO_TDSEL_CFG1, MSDC0_TDSEL_DSL_MASK,
+			cust_val);
+		MSDC_SET_FIELD(MSDC0_GPIO_TDSEL_CFG1, MSDC0_TDSEL_RSTB_MASK,
 			cust_val);
 	} else if (id == 1) {
 		if (flag == MSDC_TDRDSEL_CUST)
 			cust_val = value;
 		else
 			cust_val = 0;
-#ifndef SD_GPIO_PAD_A_EN
-		MSDC_SET_FIELD(MSDC1_GPIO_TDSEL0, MSDC1_TDSEL0_DAT0_MASK,
+		MSDC_SET_FIELD(MSDC1_GPIO_TDSEL_CFG0, MSDC1_TDSEL_CLK_MASK,
 			cust_val);
-		MSDC_SET_FIELD(MSDC1_GPIO_TDSEL0, MSDC1_TDSEL0_DAT1_MASK,
+		MSDC_SET_FIELD(MSDC1_GPIO_TDSEL_CFG0, MSDC1_TDSEL_CMD_MASK,
 			cust_val);
-		MSDC_SET_FIELD(MSDC1_GPIO_TDSEL0, MSDC1_TDSEL0_DAT2_MASK,
+		MSDC_SET_FIELD(MSDC1_GPIO_TDSEL_CFG0, MSDC1_TDSEL_DAT0_MASK,
 			cust_val);
-		MSDC_SET_FIELD(MSDC1_GPIO_TDSEL0, MSDC1_TDSEL0_DAT3_MASK,
+		MSDC_SET_FIELD(MSDC1_GPIO_TDSEL_CFG0, MSDC1_TDSEL_DAT1_MASK,
 			cust_val);
-		MSDC_SET_FIELD(MSDC1_GPIO_TDSEL0, MSDC1_TDSEL0_CMD_MASK,
+		MSDC_SET_FIELD(MSDC1_GPIO_TDSEL_CFG0, MSDC1_TDSEL_DAT2_MASK,
 			cust_val);
-		MSDC_SET_FIELD(MSDC1_GPIO_TDSEL0, MSDC1_TDSEL0_CLK_MASK,
+		MSDC_SET_FIELD(MSDC1_GPIO_TDSEL_CFG0, MSDC1_TDSEL_DAT3_MASK,
 			cust_val);
-#else
-		MSDC_SET_FIELD(MSDC1_GPIO_TDSEL0_A,
-			MSDC1_TDSEL0_DAT_MASK_A, cust_val);
-		MSDC_SET_FIELD(MSDC1_GPIO_TDSEL0_A,
-			MSDC1_TDSEL0_CMD_MASK_A, cust_val);
-		MSDC_SET_FIELD(MSDC1_GPIO_TDSEL0_A,
-			MSDC1_TDSEL0_CLK_MASK_A, cust_val);
-#endif
 	}
 }
 
@@ -1108,72 +1053,58 @@ void msdc_set_rdsel_by_id(u32 id, u32 flag, u32 value)
 			cust_val = value;
 		else
 			cust_val = 0;
-		MSDC_SET_FIELD(MSDC0_GPIO_RDSEL0_0, MSDC0_RDSEL0_CMD_MASK,
+		MSDC_SET_FIELD(MSDC0_GPIO_RDSEL_CFG0, MSDC0_RDSEL_CLK_MASK,
 			cust_val);
-		MSDC_SET_FIELD(MSDC0_GPIO_RDSEL0_0, MSDC0_RDSEL0_DAT0_MASK,
+		MSDC_SET_FIELD(MSDC0_GPIO_RDSEL_CFG0, MSDC0_RDSEL_CMD_MASK,
 			cust_val);
-		MSDC_SET_FIELD(MSDC0_GPIO_RDSEL0_0, MSDC0_RDSEL0_DAT1_MASK,
+		MSDC_SET_FIELD(MSDC0_GPIO_RDSEL_CFG0, MSDC0_RDSEL_DAT0_MASK,
 			cust_val);
-		MSDC_SET_FIELD(MSDC0_GPIO_RDSEL0_1, MSDC0_RDSEL0_DAT2_MASK,
+		MSDC_SET_FIELD(MSDC0_GPIO_RDSEL_CFG0, MSDC0_RDSEL_DAT1_MASK,
 			cust_val);
-		MSDC_SET_FIELD(MSDC0_GPIO_RDSEL0_1, MSDC0_RDSEL0_DAT3_MASK,
+		MSDC_SET_FIELD(MSDC0_GPIO_RDSEL_CFG0, MSDC0_RDSEL_DAT2_MASK,
 			cust_val);
-		MSDC_SET_FIELD(MSDC0_GPIO_RDSEL0_1, MSDC0_RDSEL0_DAT4_MASK,
+		MSDC_SET_FIELD(MSDC0_GPIO_RDSEL_CFG1, MSDC0_RDSEL_DAT3_MASK,
 			cust_val);
-		MSDC_SET_FIELD(MSDC0_GPIO_RDSEL0_1, MSDC0_RDSEL0_DAT5_MASK,
+		MSDC_SET_FIELD(MSDC0_GPIO_RDSEL_CFG1, MSDC0_RDSEL_DAT4_MASK,
 			cust_val);
-		MSDC_SET_FIELD(MSDC0_GPIO_RDSEL0_1, MSDC0_RDSEL0_DAT6_MASK,
+		MSDC_SET_FIELD(MSDC0_GPIO_RDSEL_CFG1, MSDC0_RDSEL_DAT5_MASK,
 			cust_val);
-		MSDC_SET_FIELD(MSDC0_GPIO_RDSEL0_2, MSDC0_RDSEL0_DAT7_MASK,
+		MSDC_SET_FIELD(MSDC0_GPIO_RDSEL_CFG1, MSDC0_RDSEL_DAT6_MASK,
 			cust_val);
-		MSDC_SET_FIELD(MSDC0_GPIO_RDSEL0_0, MSDC0_RDSEL0_CLK_MASK,
+		MSDC_SET_FIELD(MSDC0_GPIO_RDSEL_CFG1, MSDC0_RDSEL_DAT7_MASK,
 			cust_val);
-		MSDC_SET_FIELD(MSDC0_GPIO_RDSEL0_2, MSDC0_RDSEL0_DSL_MASK,
+		MSDC_SET_FIELD(MSDC0_GPIO_RDSEL_CFG2, MSDC0_RDSEL_DSL_MASK,
 			cust_val);
-		MSDC_SET_FIELD(MSDC0_GPIO_RDSEL0_2, MSDC0_RDSEL0_RSTB_MASK,
+		MSDC_SET_FIELD(MSDC0_GPIO_RDSEL_CFG2, MSDC0_RDSEL_RSTB_MASK,
 			cust_val);
 	} else if (id == 1) {
 		if (flag == MSDC_TDRDSEL_CUST)
 			cust_val = value;
 		else
 			cust_val = 0;
-#ifndef SD_GPIO_PAD_A_EN
-		MSDC_SET_FIELD(MSDC1_GPIO_RDSEL0_0, MSDC1_RDSEL0_CMD_MASK,
+		MSDC_SET_FIELD(MSDC1_GPIO_RDSEL_CFG0, MSDC1_RDSEL_CLK_MASK,
 			cust_val);
-		MSDC_SET_FIELD(MSDC1_GPIO_RDSEL0_0, MSDC1_RDSEL0_DAT0_MASK,
+		MSDC_SET_FIELD(MSDC1_GPIO_RDSEL_CFG0, MSDC1_RDSEL_CMD_MASK,
 			cust_val);
-		MSDC_SET_FIELD(MSDC1_GPIO_RDSEL0_0, MSDC1_RDSEL0_DAT1_MASK,
+		MSDC_SET_FIELD(MSDC1_GPIO_RDSEL_CFG0, MSDC1_RDSEL_DAT0_MASK,
 			cust_val);
-		MSDC_SET_FIELD(MSDC1_GPIO_RDSEL0_0, MSDC1_RDSEL0_DAT2_MASK,
+		MSDC_SET_FIELD(MSDC1_GPIO_RDSEL_CFG0, MSDC1_RDSEL_DAT1_MASK,
 			cust_val);
-		MSDC_SET_FIELD(MSDC1_GPIO_RDSEL0_1, MSDC1_RDSEL0_DAT3_MASK,
+		MSDC_SET_FIELD(MSDC1_GPIO_RDSEL_CFG0, MSDC1_RDSEL_DAT2_MASK,
 			cust_val);
-		MSDC_SET_FIELD(MSDC1_GPIO_RDSEL0_0, MSDC1_RDSEL0_CLK_MASK,
+		MSDC_SET_FIELD(MSDC1_GPIO_RDSEL_CFG1, MSDC1_RDSEL_DAT3_MASK,
 			cust_val);
-#else
-		MSDC_SET_FIELD(MSDC1_GPIO_RDSEL0_A,
-			MSDC1_RDSEL0_CMD_MASK_A, cust_val);
-		MSDC_SET_FIELD(MSDC1_GPIO_RDSEL0_A,
-			MSDC1_RDSEL0_DAT_MASK_A, cust_val);
-		MSDC_SET_FIELD(MSDC1_GPIO_RDSEL0_A,
-			MSDC1_RDSEL0_CLK_MASK_A, cust_val);
-#endif
 	}
 }
 
 void msdc_get_tdsel_by_id(u32 id, u32 *value)
 {
 	if (id == 0) {
-		MSDC_GET_FIELD(MSDC0_GPIO_TDSEL0_0, MSDC0_TDSEL0_CMD_MASK,
+		MSDC_GET_FIELD(MSDC0_GPIO_TDSEL_CFG0, MSDC0_TDSEL_CMD_MASK,
 			*value);
 	} else if (id == 1) {
-#ifndef SD_GPIO_PAD_A_EN
-		MSDC_GET_FIELD(MSDC1_GPIO_TDSEL0, MSDC1_TDSEL0_CMD_MASK,
+		MSDC_GET_FIELD(MSDC1_GPIO_TDSEL_CFG0, MSDC1_TDSEL_CMD_MASK,
 			*value);
-#else
-		MSDC_GET_FIELD(MSDC1_GPIO_TDSEL0_A,
-			MSDC1_TDSEL0_CMD_MASK_A, *value);
-#endif
 	}
 
 }
@@ -1181,172 +1112,103 @@ void msdc_get_tdsel_by_id(u32 id, u32 *value)
 void msdc_get_rdsel_by_id(u32 id, u32 *value)
 {
 	if (id == 0) {
-		MSDC_GET_FIELD(MSDC0_GPIO_RDSEL0_0, MSDC0_RDSEL0_CMD_MASK,
+		MSDC_GET_FIELD(MSDC0_GPIO_RDSEL_CFG0, MSDC0_RDSEL_CMD_MASK,
 			*value);
 	} else if (id == 1) {
-#ifndef SD_GPIO_PAD_A_EN
-		MSDC_GET_FIELD(MSDC1_GPIO_RDSEL0_0, MSDC1_RDSEL0_CMD_MASK,
+		MSDC_GET_FIELD(MSDC1_GPIO_RDSEL_CFG0, MSDC1_RDSEL_CMD_MASK,
 			*value);
-#else
-		MSDC_GET_FIELD(MSDC1_GPIO_RDSEL0_A,
-			MSDC1_RDSEL0_CMD_MASK_A, *value);
-#endif
 	}
 }
 
 void msdc_set_sr_by_id(u32 id, int clk, int cmd, int dat, int rst, int ds)
 {
-
+	/*SR not supported*/
+	return;
 }
+
 void msdc_set_driving_by_id(u32 id, struct msdc_hw_driving *driving)
 {
 	if (id == 0) {
-		MSDC_SET_FIELD(MSDC0_GPIO_DRV0_1,
-			MSDC0_DRV0_DSL_MASK,
+		MSDC_SET_FIELD(MSDC0_GPIO_DRV_CFG0, MSDC0_DRV_CLK_MASK,
+			driving->clk_drv);
+		MSDC_SET_FIELD(MSDC0_GPIO_DRV_CFG0, MSDC0_DRV_CMD_MASK,
+			driving->cmd_drv);
+		MSDC_SET_FIELD(MSDC0_GPIO_DRV_CFG0, MSDC0_DRV_DAT0_MASK,
+			driving->dat_drv);
+		MSDC_SET_FIELD(MSDC0_GPIO_DRV_CFG0, MSDC0_DRV_DAT1_MASK,
+			driving->dat_drv);
+		MSDC_SET_FIELD(MSDC0_GPIO_DRV_CFG0, MSDC0_DRV_DAT2_MASK,
+			driving->dat_drv);
+		MSDC_SET_FIELD(MSDC0_GPIO_DRV_CFG0, MSDC0_DRV_DAT3_MASK,
+			driving->dat_drv);
+		MSDC_SET_FIELD(MSDC0_GPIO_DRV_CFG0, MSDC0_DRV_DAT4_MASK,
+			driving->dat_drv);
+		MSDC_SET_FIELD(MSDC0_GPIO_DRV_CFG0, MSDC0_DRV_DAT5_MASK,
+			driving->dat_drv);
+		MSDC_SET_FIELD(MSDC0_GPIO_DRV_CFG0, MSDC0_DRV_DAT6_MASK,
+			driving->dat_drv);
+		MSDC_SET_FIELD(MSDC0_GPIO_DRV_CFG0, MSDC0_DRV_DAT7_MASK,
+			driving->dat_drv);
+		MSDC_SET_FIELD(MSDC0_GPIO_DRV_CFG1, MSDC0_DRV_DSL_MASK,
 			driving->ds_drv);
-		MSDC_SET_FIELD(MSDC0_GPIO_DRV0_0,
-			MSDC0_DRV0_DAT0_MASK,
-			driving->dat_drv);
-		MSDC_SET_FIELD(MSDC0_GPIO_DRV0_0,
-			MSDC0_DRV0_DAT1_MASK,
-			driving->dat_drv);
-		MSDC_SET_FIELD(MSDC0_GPIO_DRV0_0,
-			MSDC0_DRV0_DAT2_MASK,
-			driving->dat_drv);
-		MSDC_SET_FIELD(MSDC0_GPIO_DRV0_0,
-			MSDC0_DRV0_DAT3_MASK,
-			driving->dat_drv);
-		MSDC_SET_FIELD(MSDC0_GPIO_DRV0_0,
-			MSDC0_DRV0_DAT4_MASK,
-			driving->dat_drv);
-		MSDC_SET_FIELD(MSDC0_GPIO_DRV0_0,
-			MSDC0_DRV0_DAT5_MASK,
-			driving->dat_drv);
-		MSDC_SET_FIELD(MSDC0_GPIO_DRV0_1,
-			MSDC0_DRV0_DAT6_MASK,
-			driving->dat_drv);
-		MSDC_SET_FIELD(MSDC0_GPIO_DRV0_1,
-			MSDC0_DRV0_DAT7_MASK,
-			driving->dat_drv);
-		MSDC_SET_FIELD(MSDC0_GPIO_DRV0_0,
-			MSDC0_DRV0_CMD_MASK,
-			driving->cmd_drv);
-		MSDC_SET_FIELD(MSDC0_GPIO_DRV0_0,
-			MSDC0_DRV0_CLK_MASK,
-			driving->clk_drv);
+		MSDC_SET_FIELD(MSDC0_GPIO_DRV_CFG1, MSDC0_DRV_RSTB_MASK,
+			driving->rst_drv);
 	} else if (id == 1) {
-#ifndef SD_GPIO_PAD_A_EN
-		MSDC_SET_FIELD(MSDC1_GPIO_DRV0,
-			MSDC1_DRV0_CMD_MASK,
-			driving->cmd_drv);
-		MSDC_SET_FIELD(MSDC1_GPIO_DRV0,
-			MSDC1_DRV0_CLK_MASK,
+		MSDC_SET_FIELD(MSDC1_GPIO_DRV_CFG0, MSDC1_DRV_CLK_MASK,
 			driving->clk_drv);
-		MSDC_SET_FIELD(MSDC1_GPIO_DRV0,
-			MSDC1_DRV0_DAT0_MASK,
-			driving->dat_drv);
-		MSDC_SET_FIELD(MSDC1_GPIO_DRV0,
-			MSDC1_DRV0_DAT1_MASK,
-			driving->dat_drv);
-		MSDC_SET_FIELD(MSDC1_GPIO_DRV0,
-			MSDC1_DRV0_DAT2_MASK,
-			driving->dat_drv);
-		MSDC_SET_FIELD(MSDC1_GPIO_DRV0,
-			MSDC1_DRV0_DAT3_MASK,
-			driving->dat_drv);
-#else
-		MSDC_SET_FIELD(MSDC1_GPIO_DRV0_A,
-			MSDC1_DRV0_CMD_MASK_A,
+		MSDC_SET_FIELD(MSDC1_GPIO_DRV_CFG0, MSDC1_DRV_CMD_MASK,
 			driving->cmd_drv);
-		MSDC_SET_FIELD(MSDC1_GPIO_DRV0_A,
-			MSDC1_DRV0_CLK_MASK_A,
-			driving->clk_drv);
-		MSDC_SET_FIELD(MSDC1_GPIO_DRV0_A,
-			MSDC1_DRV0_DAT0_MASK_A,
+		MSDC_SET_FIELD(MSDC1_GPIO_DRV_CFG0, MSDC1_DRV_DAT0_MASK,
 			driving->dat_drv);
-		MSDC_SET_FIELD(MSDC1_GPIO_DRV0_A,
-			MSDC1_DRV0_DAT1_MASK_A,
+		MSDC_SET_FIELD(MSDC1_GPIO_DRV_CFG0, MSDC1_DRV_DAT1_MASK,
 			driving->dat_drv);
-		MSDC_SET_FIELD(MSDC1_GPIO_DRV0_A,
-			MSDC1_DRV0_DAT2_MASK_A,
+		MSDC_SET_FIELD(MSDC1_GPIO_DRV_CFG0, MSDC1_DRV_DAT2_MASK,
 			driving->dat_drv);
-		MSDC_SET_FIELD(MSDC1_GPIO_DRV0_A,
-			MSDC1_DRV0_DAT3_MASK_A,
+		MSDC_SET_FIELD(MSDC1_GPIO_DRV_CFG0, MSDC1_DRV_DAT3_MASK,
 			driving->dat_drv);
-#endif
 	}
 }
 
 void msdc_get_driving_by_id(u32 id, struct msdc_hw_driving *driving)
 {
 	if (id == 0) {
-		MSDC_GET_FIELD(MSDC0_GPIO_DRV0_1,
-			MSDC0_DRV0_DSL_MASK,
-			driving->ds_drv);
-		MSDC_GET_FIELD(MSDC0_GPIO_DRV0_0,
-			MSDC0_DRV0_DAT0_MASK,
-			driving->dat_drv);
-		MSDC_GET_FIELD(MSDC0_GPIO_DRV0_0,
-			MSDC0_DRV0_DAT1_MASK,
-			driving->dat_drv);
-		MSDC_GET_FIELD(MSDC0_GPIO_DRV0_0,
-			MSDC0_DRV0_DAT2_MASK,
-			driving->dat_drv);
-		MSDC_GET_FIELD(MSDC0_GPIO_DRV0_0,
-			MSDC0_DRV0_DAT3_MASK,
-			driving->dat_drv);
-		MSDC_GET_FIELD(MSDC0_GPIO_DRV0_0,
-			MSDC0_DRV0_DAT4_MASK,
-			driving->dat_drv);
-		MSDC_GET_FIELD(MSDC0_GPIO_DRV0_0,
-			MSDC0_DRV0_DAT5_MASK,
-			driving->dat_drv);
-		MSDC_GET_FIELD(MSDC0_GPIO_DRV0_1,
-			MSDC0_DRV0_DAT6_MASK,
-			driving->dat_drv);
-		MSDC_GET_FIELD(MSDC0_GPIO_DRV0_1,
-			MSDC0_DRV0_DAT7_MASK,
-			driving->dat_drv);
-		MSDC_GET_FIELD(MSDC0_GPIO_DRV0_0,
-			MSDC0_DRV0_CMD_MASK,
-			driving->cmd_drv);
-		MSDC_GET_FIELD(MSDC0_GPIO_DRV0_0,
-			MSDC0_DRV0_CLK_MASK,
+		MSDC_GET_FIELD(MSDC0_GPIO_DRV_CFG0, MSDC0_DRV_CLK_MASK,
 			driving->clk_drv);
-		MSDC_GET_FIELD(MSDC0_GPIO_DRV0_1,
-			MSDC0_DRV0_RSTB_MASK,
+		MSDC_GET_FIELD(MSDC0_GPIO_DRV_CFG0, MSDC0_DRV_CMD_MASK,
+			driving->cmd_drv);
+		MSDC_GET_FIELD(MSDC0_GPIO_DRV_CFG0, MSDC0_DRV_DAT0_MASK,
+			driving->dat_drv);
+		MSDC_GET_FIELD(MSDC0_GPIO_DRV_CFG0, MSDC0_DRV_DAT1_MASK,
+			driving->dat_drv);
+		MSDC_GET_FIELD(MSDC0_GPIO_DRV_CFG0, MSDC0_DRV_DAT2_MASK,
+			driving->dat_drv);
+		MSDC_GET_FIELD(MSDC0_GPIO_DRV_CFG0, MSDC0_DRV_DAT3_MASK,
+			driving->dat_drv);
+		MSDC_GET_FIELD(MSDC0_GPIO_DRV_CFG0, MSDC0_DRV_DAT4_MASK,
+			driving->dat_drv);
+		MSDC_GET_FIELD(MSDC0_GPIO_DRV_CFG0, MSDC0_DRV_DAT5_MASK,
+			driving->dat_drv);
+		MSDC_GET_FIELD(MSDC0_GPIO_DRV_CFG0, MSDC0_DRV_DAT6_MASK,
+			driving->dat_drv);
+		MSDC_GET_FIELD(MSDC0_GPIO_DRV_CFG0, MSDC0_DRV_DAT7_MASK,
+			driving->dat_drv);
+		MSDC_GET_FIELD(MSDC0_GPIO_DRV_CFG1, MSDC0_DRV_DSL_MASK,
+			driving->ds_drv);
+		MSDC_GET_FIELD(MSDC0_GPIO_DRV_CFG1, MSDC0_DRV_RSTB_MASK,
 			driving->rst_drv);
 	} else if (id == 1) {
-#ifndef SD_GPIO_PAD_A_EN
-		MSDC_GET_FIELD(MSDC1_GPIO_DRV0,
-			MSDC1_DRV0_CMD_MASK,
-			driving->cmd_drv);
-		MSDC_GET_FIELD(MSDC1_GPIO_DRV0,
-			MSDC1_DRV0_CLK_MASK,
+		MSDC_GET_FIELD(MSDC1_GPIO_DRV_CFG0, MSDC1_DRV_CLK_MASK,
 			driving->clk_drv);
-		MSDC_GET_FIELD(MSDC1_GPIO_DRV0,
-			MSDC1_DRV0_DAT0_MASK,
-			driving->dat_drv);
-		MSDC_GET_FIELD(MSDC1_GPIO_DRV0,
-			MSDC1_DRV0_DAT1_MASK,
-			driving->dat_drv);
-		MSDC_GET_FIELD(MSDC1_GPIO_DRV0,
-			MSDC1_DRV0_DAT2_MASK,
-			driving->dat_drv);
-		MSDC_GET_FIELD(MSDC1_GPIO_DRV0,
-			MSDC1_DRV0_DAT3_MASK,
-			driving->dat_drv);
-#else
-		MSDC_GET_FIELD(MSDC1_GPIO_DRV0_A,
-			MSDC1_DRV0_CMD_MASK_A,
+		MSDC_GET_FIELD(MSDC1_GPIO_DRV_CFG0, MSDC1_DRV_CMD_MASK,
 			driving->cmd_drv);
-		MSDC_GET_FIELD(MSDC1_GPIO_DRV0_A,
-			MSDC1_DRV0_CLK_MASK_A,
-			driving->clk_drv);
-		MSDC_GET_FIELD(MSDC1_GPIO_DRV0_A,
-			MSDC1_DRV0_DAT0_MASK_A,
+		MSDC_GET_FIELD(MSDC1_GPIO_DRV_CFG0, MSDC1_DRV_DAT0_MASK,
 			driving->dat_drv);
-#endif
+		MSDC_GET_FIELD(MSDC1_GPIO_DRV_CFG0, MSDC1_DRV_DAT1_MASK,
+			driving->dat_drv);
+		MSDC_GET_FIELD(MSDC1_GPIO_DRV_CFG0, MSDC1_DRV_DAT2_MASK,
+			driving->dat_drv);
+		MSDC_GET_FIELD(MSDC1_GPIO_DRV_CFG0, MSDC1_DRV_DAT3_MASK,
+			driving->dat_drv);
 	}
 }
 
@@ -1370,86 +1232,41 @@ void msdc_pin_config_by_id(u32 id, u32 mode)
 		 */
 		if (mode == MSDC_PIN_PULL_NONE) {
 			/* Switch MSDC0_* to no ohm PU */
-			MSDC_SET_FIELD(MSDC0_GPIO_PUPD0,
-				MSDC0_PUPD_ALL_MASK, 0x0);
-			MSDC_SET_FIELD(MSDC0_GPIO_R0,
-				MSDC0_R0_ALL_MASK, 0x0);
-			MSDC_SET_FIELD(MSDC0_GPIO_R1,
-				MSDC0_R1_ALL_MASK, 0x0);
+			MSDC_SET_FIELD(MSDC0_GPIO_PUPD_CFG0, MSDC0_PUPD_ALL_MASK, 0x0);
+			MSDC_SET_FIELD(MSDC0_GPIO_R0_CFG0, MSDC0_R0_ALL_MASK, 0x0);
+			MSDC_SET_FIELD(MSDC0_GPIO_R1_CFG0, MSDC0_R1_ALL_MASK, 0x0);
 		} else if (mode == MSDC_PIN_PULL_DOWN) {
 			/* Switch MSDC0_* to 50K ohm PD */
-			MSDC_SET_FIELD(MSDC0_GPIO_PUPD0,
-				MSDC0_PUPD_ALL_MASK, 0x7FF);
-			MSDC_SET_FIELD(MSDC0_GPIO_R0,
-				MSDC0_R0_ALL_MASK, 0);
-			MSDC_SET_FIELD(MSDC0_GPIO_R1,
-				MSDC0_R1_ALL_MASK, 0xFFF);
+			MSDC_SET_FIELD(MSDC0_GPIO_PUPD_CFG0, MSDC0_PUPD_ALL_MASK, 0x7FF);
+			MSDC_SET_FIELD(MSDC0_GPIO_R0_CFG0, MSDC0_R0_ALL_MASK, 0);
+			MSDC_SET_FIELD(MSDC0_GPIO_R1_CFG0, MSDC0_R1_ALL_MASK, 0x7FF);
 		} else if (mode == MSDC_PIN_PULL_UP) {
 			/* Switch MSDC0_CLK to 50K ohm PD,
 			 * MSDC0_CMD/MSDC0_DAT* to 10K ohm PU,
 			 * MSDC0_DSL to 50K ohm PD
 			 */
-			MSDC_SET_FIELD(MSDC0_GPIO_PUPD0,
-				MSDC0_PUPD_ALL_MASK, 0x401);
-			MSDC_SET_FIELD(MSDC0_GPIO_R0,
-				MSDC0_R0_ALL_MASK, 0xBFE);
-			MSDC_SET_FIELD(MSDC0_GPIO_R1,
-				MSDC0_R1_ALL_MASK, 0x401);
+			MSDC_SET_FIELD(MSDC0_GPIO_PUPD_CFG0, MSDC0_PUPD_ALL_MASK, 0x401);
+			MSDC_SET_FIELD(MSDC0_GPIO_R0_CFG0, MSDC0_R0_ALL_MASK, 0xBFE);
+			MSDC_SET_FIELD(MSDC0_GPIO_R1_CFG0, MSDC0_R1_ALL_MASK, 0x401);
 		}
 	} else if (id == 1) {
 		if (mode == MSDC_PIN_PULL_NONE) {
 			/* Switch MSDC1_* to no ohm PU */
-#ifndef SD_GPIO_PAD_A_EN
-			MSDC_SET_FIELD(MSDC1_GPIO_PUPD0,
-				MSDC1_PUPD_ALL_MASK, 0x0);
-			MSDC_SET_FIELD(MSDC1_GPIO_R0,
-				MSDC1_R0_ALL_MASK, 0x0);
-			MSDC_SET_FIELD(MSDC1_GPIO_R1,
-				MSDC1_R1_ALL_MASK, 0x0);
-#else
-			MSDC_SET_FIELD(MSDC1_GPIO_PUPD0_A,
-				MSDC1_PUPD_ALL_MASK_A, 0x0);
-			MSDC_SET_FIELD(MSDC1_GPIO_R0_A,
-				MSDC1_R0_ALL_MASK_A, 0x0);
-			MSDC_SET_FIELD(MSDC1_GPIO_R1_A,
-				MSDC1_R1_ALL_MASK_A, 0x0);
-#endif
+			MSDC_SET_FIELD(MSDC1_GPIO_PUPD_CFG0, MSDC1_PUPD_ALL_MASK, 0x0);
+			MSDC_SET_FIELD(MSDC1_GPIO_R0_CFG0, MSDC1_R0_ALL_MASK, 0x0);
+			MSDC_SET_FIELD(MSDC1_GPIO_R1_CFG0, MSDC1_R1_ALL_MASK, 0x0);
 		} else if (mode == MSDC_PIN_PULL_DOWN) {
 			/* Switch MSDC1_* to 50K ohm PD */
-#ifndef SD_GPIO_PAD_A_EN
-			MSDC_SET_FIELD(MSDC1_GPIO_PUPD0,
-				MSDC1_PUPD_ALL_MASK, 0x3F);
-			MSDC_SET_FIELD(MSDC1_GPIO_R0,
-				MSDC1_R0_ALL_MASK, 0x0);
-			MSDC_SET_FIELD(MSDC1_GPIO_R1,
-				MSDC1_R1_ALL_MASK, 0x3F);
-#else
-			MSDC_SET_FIELD(MSDC1_GPIO_PUPD0_A,
-				MSDC1_PUPD_ALL_MASK_A, 0x3F);
-			MSDC_SET_FIELD(MSDC1_GPIO_R0_A,
-				MSDC1_R0_ALL_MASK_A, 0x0);
-			MSDC_SET_FIELD(MSDC1_GPIO_R1_A,
-				MSDC1_R1_ALL_MASK_A, 0x3F);
-#endif
+			MSDC_SET_FIELD(MSDC1_GPIO_PUPD_CFG0, MSDC1_PUPD_ALL_MASK, 0x3F);
+			MSDC_SET_FIELD(MSDC1_GPIO_R0_CFG0, MSDC1_R0_ALL_MASK, 0x0);
+			MSDC_SET_FIELD(MSDC1_GPIO_R1_CFG0, MSDC1_R1_ALL_MASK, 0x3F);
 		} else if (mode == MSDC_PIN_PULL_UP) {
 			/* Switch MSDC1_CLK to 50K ohm PD,
 			 * MSDC1_CMD/MSDC1_DAT* to 50K ohm PU
 			 */
-#ifndef SD_GPIO_PAD_A_EN
-			MSDC_SET_FIELD(MSDC1_GPIO_PUPD0,
-				MSDC1_PUPD_ALL_MASK, 0x1);
-			MSDC_SET_FIELD(MSDC1_GPIO_R0,
-				MSDC1_R0_ALL_MASK, 0x0);
-			MSDC_SET_FIELD(MSDC1_GPIO_R1,
-				MSDC1_R1_ALL_MASK, 0x3F);
-#else
-			MSDC_SET_FIELD(MSDC1_GPIO_PUPD0_A,
-				MSDC1_PUPD_ALL_MASK_A, 0x1);
-			MSDC_SET_FIELD(MSDC1_GPIO_R0_A,
-				MSDC1_R0_ALL_MASK_A, 0x0);
-			MSDC_SET_FIELD(MSDC1_GPIO_R1_A,
-				MSDC1_R1_ALL_MASK_A, 0x3F);
-#endif
+			MSDC_SET_FIELD(MSDC1_GPIO_PUPD_CFG0, MSDC1_PUPD_ALL_MASK, 0x1);
+			MSDC_SET_FIELD(MSDC1_GPIO_R0_CFG0, MSDC1_R0_ALL_MASK, 0x0);
+			MSDC_SET_FIELD(MSDC1_GPIO_R1_CFG0, MSDC1_R1_ALL_MASK, 0x3F);
 		}
 	}
 }
@@ -1548,7 +1365,6 @@ static int msdc_get_register_settings(struct msdc_host *host,
  *	@host: host whose node should be parsed.
  *
  */
-static struct notifier_block sd_oc_nb;  //register call back for 6360 PMIC OC
 int msdc_of_parse(struct platform_device *pdev, struct mmc_host *mmc)
 {
 	struct device_node *np;
@@ -1629,8 +1445,6 @@ int msdc_of_parse(struct platform_device *pdev, struct mmc_host *mmc)
 				host->id);
 	}
 
-	printk(KERN_ERR "%s: cd_gpio=%d, cd_level=%d",__func__, cd_gpio, host->hw->cd_level);
-
 	msdc_get_register_settings(host, np);
 #if !defined(FPGA_PLATFORM)
 	msdc_get_pinctl_settings(host, np);
@@ -1693,12 +1507,9 @@ int msdc_of_parse(struct platform_device *pdev, struct mmc_host *mmc)
 
 #if !defined(FPGA_PLATFORM) && !defined(CONFIG_MTK_MSDC_BRING_UP_BYPASS)
 	if (host->id == 1) {
-		sd_oc_nb.notifier_call = msdc_sd_event;
-		devm_regulator_register_notifier(mmc->supply.vmmc
-			, &sd_oc_nb);
-		devm_regulator_register_notifier(mmc->supply.vqmmc
-
-			, &sd_oc_nb);
+		sd_oc.nb.notifier_call = msdc_sd_event;
+		INIT_WORK(&sd_oc.work, sdcard_oc_handler);
+		sd_oc.reg_status = 0;
 	}
 #endif
 
@@ -1715,15 +1526,9 @@ int msdc_dt_init(struct platform_device *pdev, struct mmc_host *mmc)
 	int id;
 
 #ifndef FPGA_PLATFORM
-#ifndef SD_GPIO_PAD_A_EN
 	static char const * const ioconfig_names[] = {
 		MSDC0_IOCFG_NAME, MSDC1_IOCFG_NAME
 	};
-#else
-	static char const * const ioconfig_names[] = {
-		MSDC0_IOCFG_NAME, MSDC1_A_IOCFG_NAME
-	};
-#endif
 	struct device_node *np;
 #endif
 
@@ -1905,6 +1710,6 @@ u16 msdc_offsets_top[] = {
 	OFFSET_TOP_EMMC50_PAD_DAT5_TUNE,
 	OFFSET_TOP_EMMC50_PAD_DAT6_TUNE,
 	OFFSET_TOP_EMMC50_PAD_DAT7_TUNE,
-
+	OFFSET_TOP_TEST_LOOP,
 	0xFFFF /*as mark of end */
 };
