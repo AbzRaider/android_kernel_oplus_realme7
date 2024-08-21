@@ -155,6 +155,7 @@ struct gadget_config_name {
 };
 
 
+#define MAX_USB_STRING_LEN      126
 #define USB_MAX_STRING_LEN	126
 #define USB_MAX_STRING_WITH_NULL_LEN	(USB_MAX_STRING_LEN+1)
 
