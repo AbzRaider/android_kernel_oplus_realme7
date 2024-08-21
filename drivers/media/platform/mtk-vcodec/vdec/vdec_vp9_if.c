@@ -223,11 +223,17 @@ static struct vdec_fb *vp9_rm_from_fb_use_list(struct vdec_vp9_inst
 		fb = (struct vdec_fb *)node->fb;
 		if (fb->base_y.va == addr) {
 			list_move_tail(&node->list,
+<<<<<<< HEAD
 				&inst->available_fb_node_list);
 			break;
+=======
+				       &inst->available_fb_node_list);
+			return fb;
+>>>>>>> 014241ad77dda0eafbdf671d5b8e86917d8ec97e
 		}
 	}
-	return fb;
+
+	return NULL;
 }
 
 static void vp9_add_to_fb_free_list(struct vdec_vp9_inst *inst,
