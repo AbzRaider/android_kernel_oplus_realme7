@@ -588,11 +588,9 @@ config TILE_SROM
 
 source "drivers/char/xillybus/Kconfig"
 
-<<<<<<< HEAD
 source "drivers/char/rpmb/Kconfig"
 
 endmenu
-=======
 config RANDOM_TRUST_CPU
 	bool "Initialize RNG using CPU RNG instructions"
 	default y
@@ -607,7 +605,7 @@ config RANDOM_TRUST_CPU
 	  other sources of randomness are always used, regardless of this
 	  setting.  Enabling this implies trusting that the CPU can supply high
 	  quality and non-backdoored random numbers.
->>>>>>> 014241ad77dda0eafbdf671d5b8e86917d8ec97e
+
 
 	  Say Y here unless you have reason to mistrust your CPU or believe
 	  its RNG facilities may be faulty. This may also be configured at
