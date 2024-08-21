@@ -15,7 +15,7 @@ echo "Kernel OUT Directory Not Found . Making Again"
 mkdir out
 fi
 
-make O=out ARCH=arm64 RMX2151_defconfig
+make O=out ARCH=arm64 salaa_user_defconfig
 
 PATH="${PWD}/clang/bin:${PATH}" \
  make -j "$(nproc --all)" O="out" CC="clang" \
