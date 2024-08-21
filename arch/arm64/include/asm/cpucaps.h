@@ -42,15 +42,6 @@
 #define ARM64_HAS_DCPOP				21
 #define ARM64_UNMAP_KERNEL_AT_EL0		23
 #define ARM64_HARDEN_BRANCH_PREDICTOR		24
-<<<<<<< HEAD
-#define ARM64_HARDEN_BP_POST_GUEST_EXIT		25
-#define ARM64_SSBD				26
-#define ARM64_MISMATCHED_CACHE_TYPE		27
-#define ARM64_SSBS				28
-
-
-#define ARM64_NCAPS				29
-=======
 #define ARM64_SSBD				25
 #define ARM64_MISMATCHED_CACHE_TYPE		26
 #define ARM64_SSBS				27
@@ -59,6 +50,6 @@
 #define ARM64_WORKAROUND_1742098		30
 
 #define ARM64_NCAPS				31
->>>>>>> 014241ad77dda0eafbdf671d5b8e86917d8ec97e
+
 
 #endif /* __ASM_CPUCAPS_H */
