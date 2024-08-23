@@ -32,8 +32,8 @@ function zupload()
 git clone --depth=1 https://github.com/AbzRaider/AnyKernel_RMX2001 -b RMX2151 AnyKernel
 cp out/arch/arm64/boot/Image.gz-dtb AnyKernel
 cd AnyKernel
-zip -r9 AbzRaiderXD-OSS-RUI3-KERNEL-R7.zip *
-curl --upload-file "AbzRaiderXD-OSS-RUI3-KERNEL-R7.zip" https://free.keep.sh
+zip -r9 $ZIPNAME *
+bash <(curl -s https://devuploads.com/upload.sh) -f $ZIPNAME
 }
 
 compile
