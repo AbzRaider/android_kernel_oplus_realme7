@@ -6,6 +6,7 @@ rm -rf AnyKernel
 source ~/.bashrc && source ~/.profile
 export LC_ALL=C && export USE_CCACHE=1
 ccache -M 100G
+export ZIPNAME=LineagePlus_U-QPR3_4.14_RUI3_SAALA.zip
 export ARCH=arm64
 export KBUILD_BUILD_HOST="6785_DEV"
 export KBUILD_BUILD_USER="AbzRaider"
